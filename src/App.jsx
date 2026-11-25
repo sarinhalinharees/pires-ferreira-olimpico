@@ -3,6 +3,7 @@ import { Link, NavLink, Route, Routes, useNavigate, useParams } from "react-rout
 import { Award, CalendarDays, ChevronLeft, ChevronRight, ExternalLink, GraduationCap, Medal, Search, ShieldCheck, Trophy, ArrowRight, LogOut, Plus, Save, Trash2, Menu, X } from "lucide-react";
 import { initialOlympiads, infoPending } from "./data/olympiads";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import CsvResultsImporter from "./components/CsvResultsImporter";
 
 const nav = [["/", "Início"], ["/olimpiadas", "Olimpíadas"], ["/calendario", "Calendário"], ["/resultados", "Resultados"]];
 const fmt = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR") : "";
@@ -124,7 +125,6 @@ function CalendarPage({ olympiads, events }) {
   const monthStart = new Date(year, month, 1);
   const monthEnd = new Date(year, month + 1, 0);
 
-  // Inclui eventos que começam antes do mês e continuam dentro dele.
   const monthEvents = events.filter((event) => {
     const start = dateAtNoon(event.start_date);
     const end = dateAtNoon(event.end_date || event.start_date);
@@ -140,22 +140,11 @@ function CalendarPage({ olympiads, events }) {
     setYear(next.getFullYear());
   };
 
-  const list = events
-    .filter(eventMatchesFilter)
-    .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""));
+  const list = events.filter(eventMatchesFilter).sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""));
   const visibleEvents = showAll ? list : monthEvents;
-  const years = [...new Set([
-    now.getFullYear() - 1,
-    now.getFullYear(),
-    now.getFullYear() + 1,
-    ...events.flatMap((event) => [dateAtNoon(event.start_date)?.getFullYear(), dateAtNoon(event.end_date)?.getFullYear()]).filter(Boolean)
-  ])].sort((a, b) => a - b);
+  const years = [...new Set([now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1, ...events.flatMap((event) => [dateAtNoon(event.start_date)?.getFullYear(), dateAtNoon(event.end_date)?.getFullYear()]).filter(Boolean)])].sort((a, b) => a - b);
 
-  const olympiadAcronym = (event) =>
-    event.olympiads?.acronym ||
-    olympiads.find((item) => String(item.id) === String(event.olympiad_id))?.acronym ||
-    "Olimpíada";
-
+  const olympiadAcronym = (event) => event.olympiads?.acronym || olympiads.find((item) => String(item.id) === String(event.olympiad_id))?.acronym || "Olimpíada";
   const eventOccursOnDay = (event, day) => {
     if (event.date_precision === "month") return false;
     const current = new Date(year, month, day, 12);
@@ -163,77 +152,32 @@ function CalendarPage({ olympiads, events }) {
     const end = dateAtNoon(event.end_date || event.start_date);
     return start && end && current >= start && current <= end;
   };
-
   const eventLink = (event) => `/olimpiadas/${encodeURIComponent(olympiadAcronym(event))}`;
 
   return <>
     <Hero title="Calendário" subtitle="Etapas e datas cadastradas das olimpíadas. Clique em um evento para ver os detalhes da competição."/>
     <main className="container page-content">
       <div className="filters">
-        <label>Olimpíada
-          <select value={filter} onChange={(event) => setFilter(event.target.value)}>
-            <option value="all">Todas as olimpíadas</option>
-            {olympiads.map((item) => <option value={item.id} key={item.id}>{item.acronym}</option>)}
-          </select>
-        </label>
-        <label>Mês
-          <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
-            {Array.from({ length: 12 }, (_, index) =>
-              <option value={index} key={index}>
-                {new Date(year, index, 1).toLocaleDateString("pt-BR", { month: "long" })}
-              </option>
-            )}
-          </select>
-        </label>
-        <label>Ano
-          <select value={year} onChange={(event) => setYear(Number(event.target.value))}>
-            {years.map((item) => <option value={item} key={item}>{item}</option>)}
-          </select>
-        </label>
+        <label>Olimpíada<select value={filter} onChange={(event) => setFilter(event.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map((item) => <option value={item.id} key={item.id}>{item.acronym}</option>)}</select></label>
+        <label>Mês<select value={month} onChange={(event) => setMonth(Number(event.target.value))}>{Array.from({ length: 12 }, (_, index) => <option value={index} key={index}>{new Date(year, index, 1).toLocaleDateString("pt-BR", { month: "long" })}</option>)}</select></label>
+        <label>Ano<select value={year} onChange={(event) => setYear(Number(event.target.value))}>{years.map((item) => <option value={item} key={item}>{item}</option>)}</select></label>
       </div>
-
       <div className="calendar-layout">
         <section className="calendar panel">
-          <div className="calendar-head">
-            <button onClick={() => shift(-1)} aria-label="Mês anterior"><ChevronLeft/></button>
-            <h2>{monthName}</h2>
-            <button onClick={() => shift(1)} aria-label="Próximo mês"><ChevronRight/></button>
-          </div>
+          <div className="calendar-head"><button onClick={() => shift(-1)} aria-label="Mês anterior"><ChevronLeft/></button><h2>{monthName}</h2><button onClick={() => shift(1)} aria-label="Próximo mês"><ChevronRight/></button></div>
           <div className="calendar-grid">
             {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="weekday" key={day}>{day}</div>)}
             {Array.from({ length: offset }, (_, index) => <div className="day blank" key={`blank-${index}`}/>)}
             {Array.from({ length: days }, (_, index) => {
               const day = index + 1;
               const dayEvents = monthEvents.filter((event) => eventOccursOnDay(event, day));
-              return <div className="day" key={day}>
-                <span>{day}</span>
-                {dayEvents.slice(0, 3).map((event) =>
-                  <Link key={event.id} to={eventLink(event)} className="day-event" title={event.title}>
-                    {olympiadAcronym(event)}
-                  </Link>
-                )}
-                {dayEvents.length > 3 && <small>+{dayEvents.length - 3} evento(s)</small>}
-              </div>;
+              return <div className="day" key={day}><span>{day}</span>{dayEvents.slice(0, 3).map((event) => <Link key={event.id} to={eventLink(event)} className="day-event" title={event.title}>{olympiadAcronym(event)}</Link>)}{dayEvents.length > 3 && <small>+{dayEvents.length - 3} evento(s)</small>}</div>;
             })}
           </div>
         </section>
-
         <section className="events-column">
-          <div className="events-title">
-            <h2>Eventos</h2>
-            <div className="toggle">
-              <button className={!showAll ? "active" : ""} onClick={() => setShowAll(false)}>Do mês</button>
-              <button className={showAll ? "active" : ""} onClick={() => setShowAll(true)}>Todos</button>
-            </div>
-          </div>
-          {visibleEvents.map((event) =>
-            <Link className="event-card" key={event.id} to={eventLink(event)}>
-              <b>{event.date_precision === "month" ? (event.date_note || dateAtNoon(event.start_date)?.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })) : `${fmt(event.start_date)}${event.end_date && event.end_date !== event.start_date ? ` – ${fmt(event.end_date)}` : ""}`}</b>
-              <strong>{event.title}</strong>
-              <span>Olimpíada: {olympiadAcronym(event)} · Etapa: {event.stage || infoPending}</span>
-              {event.description && <p>{event.description}</p>}
-            </Link>
-          )}
+          <div className="events-title"><h2>Eventos</h2><div className="toggle"><button className={!showAll ? "active" : ""} onClick={() => setShowAll(false)}>Do mês</button><button className={showAll ? "active" : ""} onClick={() => setShowAll(true)}>Todos</button></div></div>
+          {visibleEvents.map((event) => <Link className="event-card" key={event.id} to={eventLink(event)}><b>{event.date_precision === "month" ? (event.date_note || dateAtNoon(event.start_date)?.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })) : `${fmt(event.start_date)}${event.end_date && event.end_date !== event.start_date ? ` – ${fmt(event.end_date)}` : ""}`}</b><strong>{event.title}</strong><span>Olimpíada: {olympiadAcronym(event)} · Etapa: {event.stage || infoPending}</span>{event.description && <p>{event.description}</p>}</Link>)}
           {!visibleEvents.length && <p className="empty">Nenhum evento cadastrado para este período. Os eventos aparecerão aqui depois de serem registrados na Administração.</p>}
         </section>
       </div>
@@ -244,15 +188,31 @@ function CalendarPage({ olympiads, events }) {
 function ResultsPage({ results, olympiads }) {
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
+  const [kind, setKind] = useState("all");
   const [query, setQuery] = useState("");
-  const editions = [...new Set(results.map(r=>r.edition).filter(Boolean))].sort().reverse();
-  const filtered = results.filter(r => (olympiad==="all" || r.olympiad_id===olympiad) && (edition==="all" || r.edition===edition) && `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""}`.toLowerCase().includes(query.toLowerCase()) && (!r.municipality && !r.schools?.municipality || (r.municipality || r.schools?.municipality).toLowerCase().includes("pires ferreira")));
+  const editions = [...new Set(results.map(r => r.edition).filter(Boolean))].sort().reverse();
+  const filtered = results.filter(r =>
+    (olympiad === "all" || r.olympiad_id === olympiad) &&
+    (edition === "all" || r.edition === edition) &&
+    (kind === "all" || (r.result_type || "official") === kind) &&
+    `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""} ${r.level || ""}`.toLowerCase().includes(query.toLowerCase()) &&
+    (!r.municipality && !r.schools?.municipality || (r.municipality || r.schools?.municipality).toLowerCase().includes("pires ferreira"))
+  );
   return <>
-    <Hero title="Resultados" subtitle="Resultados oficiais cadastrados por olimpíada e edição."/>
+    <Hero title="Resultados" subtitle="Consulte as premiações oficiais e as atividades de preparação dos estudantes."/>
     <main className="container page-content">
       <div className="notice-bar"><b>Somente estudantes de Pires Ferreira</b><span>Resultados de outros municípios não são exibidos.</span></div>
-      <div className="result-filters"><select value={olympiad} onChange={e=>setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym}</option>)}</select><select value={edition} onChange={e=>setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e=><option key={e}>{e}</option>)}</select><div className="searchbox"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div></div>
-      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada</th><th>Edição</th><th>Premiação</th></tr></thead><tbody>{filtered.map(r=><tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.olympiads?.acronym || olympiads.find(o=>o.id===r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado cadastrado nesta versão</b><span>Os resultados do site antigo não foram importados automaticamente. Eles aparecerão aqui depois de serem cadastrados no painel administrativo.</span></div>}
+      <div className="result-kind-tabs">
+        <button className={kind === "all" ? "active" : ""} onClick={() => setKind("all")}>Todos</button>
+        <button className={kind === "official" ? "active" : ""} onClick={() => setKind("official")}>Olimpíadas oficiais</button>
+        <button className={kind === "simulado" ? "active" : ""} onClick={() => setKind("simulado")}>Simulados e atividades</button>
+      </div>
+      <div className="result-filters">
+        <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
+        <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
+        <div className="searchbox"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div>
+      </div>
+      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo.</span></div>}
     </main>
   </>;
 }
@@ -282,16 +242,10 @@ function Admin({ data }) {
       if(!mounted)return;
       setSession(current);
       if(current?.user?.id){
-        const {data:profile,error:profileError}=await supabase
-          .from("admin_profiles").select("user_id,role").eq("user_id",current.user.id).maybeSingle();
+        const {data:profile,error:profileError}=await supabase.from("admin_profiles").select("user_id,role").eq("user_id",current.user.id).maybeSingle();
         if(!mounted)return;
         if(profile && profile.role==="admin"){setAuthorized(true);}
-        else {
-          await supabase.auth.signOut();
-          setSession(null);
-          setAuthorized(false);
-          setError("Esta conta não possui autorização administrativa.");
-        }
+        else {await supabase.auth.signOut();setSession(null);setAuthorized(false);setError("Esta conta não possui autorização administrativa.");}
       } else {setAuthorized(false);}
       setChecking(false);
     };
@@ -308,26 +262,20 @@ function Admin({ data }) {
     e.preventDefault();setError("");setBusy(true);
     const {data,error:loginError}=await supabase.auth.signInWithPassword({email,password});
     if(loginError){setError(loginError.message);setBusy(false);return;}
-    const {data:profile,error:profileError}=await supabase.from("admin_profiles")
-      .select("user_id,role").eq("user_id",data.user.id).maybeSingle();
+    const {data:profile,error:profileError}=await supabase.from("admin_profiles").select("user_id,role").eq("user_id",data.user.id).maybeSingle();
     if(profileError || !profile || profile.role!=="admin"){
-      await supabase.auth.signOut();
-      setError("A conta foi autenticada, mas não está autorizada como administradora.");
-      setBusy(false);return;
+      await supabase.auth.signOut();setError("A conta foi autenticada, mas não está autorizada como administradora.");setBusy(false);return;
     }
     setSession(data.session);setAuthorized(true);setBusy(false);
   }
 
   async function createAdmin(e){
     e.preventDefault();setError("");setMessage("");setBusy(true);
-    const {data,error:fnError}=await supabase.functions.invoke("create-admin",{
-      body:{email:newAdminEmail,password:newAdminPassword,inviteSecret}
-    });
+    const {data,error:fnError}=await supabase.functions.invoke("create-admin",{body:{email:newAdminEmail,password:newAdminPassword,inviteSecret}});
     setBusy(false);
     if(fnError || data?.error){setError(data?.error || fnError.message || "Não foi possível criar o administrador.");return;}
     setMessage("Administrador criado. Agora entre com o e-mail e a senha cadastrados.");
-    setShowCreate(false);setEmail(newAdminEmail);setPassword("");
-    setNewAdminEmail("");setNewAdminPassword("");setInviteSecret("");
+    setShowCreate(false);setEmail(newAdminEmail);setPassword("");setNewAdminEmail("");setNewAdminPassword("");setInviteSecret("");
   }
 
   async function logout(){await supabase.auth.signOut();setSession(null);setAuthorized(false);navigate("/");}
@@ -364,17 +312,36 @@ function AdminEditor({tab,olympiads,events,results,refresh,setMessage}) {
   const [form,setForm]=useState({});
   const [busy,setBusy]=useState(false);
   const change=(k,v)=>setForm(p=>({...p,[k]:v}));
-  const save=async(e)=>{e.preventDefault();setBusy(true);setMessage("");let table=tab==="olympiads"?"olympiads":tab==="events"?"events":"results";let payload={...form};if(tab==="olympiads")delete payload.id;if(tab!=="olympiads"&&!payload.olympiad_id){setMessage("Selecione uma olimpíada.");setBusy(false);return;}const result=selected?await supabase.from(table).update(payload).eq("id",selected):await supabase.from(table).insert(payload);setBusy(false);if(result.error)setMessage(result.error.message);else{setMessage("Registro salvo com sucesso.");setForm({});setSelected("");await refresh();}};
-  const remove=async(id)=>{if(!confirm("Deseja realmente excluir este registro?"))return;const table=tab==="olympiads"?"olympiads":tab==="events"?"events":"results";const {error}=await supabase.from(table).delete().eq("id",id);setMessage(error?.message||"Registro excluído.");await refresh();};
+  const save=async(e)=>{
+    e.preventDefault();setBusy(true);setMessage("");
+    const table=tab==="olympiads"?"olympiads":tab==="events"?"events":"results";
+    const payload={...form};
+    if(tab==="olympiads")delete payload.id;
+    if(tab!=="olympiads"&&!payload.olympiad_id){setMessage("Selecione uma olimpíada.");setBusy(false);return;}
+    const result=selected?await supabase.from(table).update(payload).eq("id",selected):await supabase.from(table).insert(payload);
+    setBusy(false);
+    if(result.error)setMessage(result.error.message);
+    else{setMessage("Registro salvo com sucesso.");setForm({});setSelected("");await refresh();}
+  };
+  const remove=async(id)=>{
+    if(!confirm("Deseja realmente excluir este registro?"))return;
+    const table=tab==="olympiads"?"olympiads":tab==="events"?"events":"results";
+    const {error}=await supabase.from(table).delete().eq("id",id);
+    setMessage(error?.message||"Registro excluído.");await refresh();
+  };
   const records=tab==="olympiads"?olympiads:tab==="events"?events:results;
   const edit=(r)=>{setSelected(r.id);const f={...r};delete f.id;delete f.created_at;delete f.updated_at;delete f.olympiads;delete f.schools;setForm(f);};
-  const input=(key,label,type="text",required=false)=><label>{label}<input type={type} required={required} value={form[key]||""} onChange={e=>change(key,e.target.value)}/></label>;
+  const input=(key,label,type="text",required=false)=><label>{label}<input type={type} required={required} value={form[key]??""} onChange={e=>change(key,e.target.value)}/></label>;
   const textarea=(key,label)=><label>{label}<textarea rows="3" value={form[key]||""} onChange={e=>change(key,e.target.value)}/></label>;
-  return <div className="admin-editor"><form className="editor-form" onSubmit={save}><h2>{selected?"Editar registro":"Novo registro"}</h2>
-    {tab==="olympiads" ? <>{input("acronym","Sigla", "text",true)}{input("name","Nome da olimpíada","text",true)}{textarea("description","Descrição")}{input("audience","Público / nível")}{textarea("stages","Etapas")}{textarea("registration_info","Inscrições")}{textarea("notices","Avisos")}{input("regulation_url","Link do regulamento","url")}<label className="check"><input type="checkbox" checked={form.published??true} onChange={e=>change("published",e.target.checked)}/> Publicada</label></>
-    : <><label>Olimpíada<select required value={form.olympiad_id||""} onChange={e=>change("olympiad_id",e.target.value)}><option value="">Selecione</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym} — {o.name}</option>)}</select></label>{tab==="events"?<>{input("title","Título do evento","text",true)}{input("start_date","Data inicial","date",true)}{input("end_date","Data final","date")}{input("stage","Etapa")}{textarea("description","Informações")}</>:<>{input("participant_name","Nome do participante","text",true)}{input("school_name","Escola")}{input("municipality","Município")}{input("edition","Edição")}{input("award","Premiação / classificação")}</>}</>}
+  return <div className="admin-editor">
+    {tab==="results"&&<CsvResultsImporter olympiads={olympiads} refresh={refresh}/>}
+    <form className="editor-form" onSubmit={save}><h2>{selected?"Editar registro":"Novo registro"}</h2>
+    {tab==="olympiads" ? <>{input("acronym","Sigla","text",true)}{input("name","Nome da olimpíada","text",true)}{textarea("description","Descrição")}{input("audience","Público / nível")}{textarea("stages","Etapas")}{textarea("registration_info","Inscrições")}{textarea("notices","Avisos")}{input("regulation_url","Link do regulamento","url")}<label className="check"><input type="checkbox" checked={form.published??true} onChange={e=>change("published",e.target.checked)}/> Publicada</label></>
+    : <><label>Olimpíada<select required value={form.olympiad_id||""} onChange={e=>change("olympiad_id",e.target.value)}><option value="">Selecione</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym} — {o.name}</option>)}</select></label>{tab==="events"?<>{input("title","Título do evento","text",true)}{input("start_date","Data inicial","date",true)}{input("end_date","Data final","date")}{input("stage","Etapa")}{textarea("description","Informações")}</>:<>{input("participant_name","Nome do participante","text",true)}{input("school_name","Escola")}{input("municipality","Município")}{input("edition","Edição")}{input("award","Premiação / classificação")}{input("score","Nota / pontuação","number")}{input("level","Nível")}{input("activity_name","Nome da atividade") }<label>Tipo de resultado<select value={form.result_type||"official"} onChange={e=>change("result_type",e.target.value)}><option value="official">Olimpíada oficial</option><option value="simulado">Simulado / atividade</option></select></label></>}</>}
     <div className="form-actions"><button className="primary-btn" disabled={busy}><Save size={16}/>{busy?"Salvando...":"Salvar"}</button>{selected&&<button type="button" className="secondary-btn" onClick={()=>{setSelected("");setForm({});}}>Cancelar</button>}</div>
-  </form><div className="record-list"><h2>Registros ({records.length})</h2>{records.map(r=><div className="record" key={r.id}><div><b>{r.acronym||r.title||r.participant_name}</b><span>{r.name||r.start_date||r.edition||""}</span></div><button onClick={()=>edit(r)} aria-label="Editar">Editar</button><button className="delete-btn" onClick={()=>remove(r.id)} aria-label="Excluir"><Trash2 size={16}/></button></div>)}</div></div>;
+  </form>
+  <div className="record-list"><h2>Registros ({records.length})</h2>{records.map(r=><div className="record" key={r.id}><div><b>{r.acronym||r.title||r.participant_name}</b><span>{r.name||r.start_date||r.edition||r.activity_name||""}</span></div><button onClick={()=>edit(r)} aria-label="Editar">Editar</button><button className="delete-btn" onClick={()=>remove(r.id)} aria-label="Excluir"><Trash2 size={16}/></button></div>)}</div>
+  </div>;
 }
 
 export default function App() {

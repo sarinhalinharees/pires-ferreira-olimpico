@@ -1,0 +1,33 @@
+
+/* Importação CSV de resultados */
+.csv-import-card{grid-column:1/-1;background:#fffdfa;border:1px solid #ded5c7;border-radius:16px;padding:22px;display:flex;flex-direction:column;gap:16px}
+.csv-import-heading{display:flex;align-items:center;gap:13px}
+.csv-import-icon{width:46px;height:46px;display:grid;place-items:center;border-radius:13px;background:#e8f4ec;color:#187344;flex:none}
+.csv-import-heading h2{font:700 21px "Playfair Display",serif;margin:0 0 5px;color:#142f50}
+.csv-import-heading p{font-size:13px;color:#687b8e;margin:0;line-height:1.5}
+.csv-import-controls{display:grid;grid-template-columns:1fr 180px;gap:12px}
+.csv-import-controls label{display:flex;flex-direction:column;gap:7px;font-size:12px;color:#53677d}
+.csv-import-controls input,.csv-import-controls select{height:42px;padding:0 12px;border:1px solid #d9d0c2;border-radius:10px;background:#faf7ef;color:#16395f}
+.csv-file-picker{display:flex;align-items:center;gap:10px;padding:14px;border:1px dashed #c9bda9;border-radius:12px;background:#faf7ef;color:#17395e;cursor:pointer;font-size:13px;font-weight:700}
+.csv-file-picker input{display:none}
+.csv-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.csv-summary div{background:#f7f0e4;border-radius:11px;padding:12px;display:flex;flex-direction:column;gap:3px}
+.csv-summary b{font-size:21px;color:#17395e}
+.csv-summary span,.csv-muted{font-size:11px;color:#718096}
+.csv-preview-wrap{overflow:auto;border:1px solid #e4dccf;border-radius:10px}
+.csv-preview{width:100%;border-collapse:collapse;font-size:12px}
+.csv-preview th,.csv-preview td{padding:10px;text-align:left;border-bottom:1px solid #eee6db;white-space:nowrap}
+.csv-preview th{background:#f7f0e4;color:#17395e}
+.csv-type{display:inline-block;border-radius:20px;padding:4px 8px;font-size:10px;font-weight:700}
+.csv-type.official{background:#e7edf5;color:#17395e}
+.csv-type.simulado{background:#fff0d7;color:#89580c}
+.csv-alert{display:flex;align-items:flex-start;gap:8px;padding:11px 13px;border-radius:10px;font-size:12px;line-height:1.5}
+.csv-alert.error{background:#fff0ef;color:#a32d2d}
+.csv-alert.success{background:#edf8f0;color:#167647}
+.csv-import-button{align-self:flex-start}
+.result-kind-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 16px}
+.result-kind-tabs button{border:1px solid #d9d0c2;background:#fffdfa;color:#42566c;padding:9px 13px;border-radius:10px;font-size:12px;cursor:pointer}
+.result-kind-tabs button.active{background:#17395e;color:#fff;border-color:#17395e}
+.spin{animation:csv-spin 1s linear infinite}
+@keyframes csv-spin{to{transform:rotate(360deg)}}
+@media(max-width:560px){.csv-import-card{padding:15px}.csv-import-controls{grid-template-columns:1fr}.csv-summary{grid-template-columns:repeat(2,1fr)}.csv-import-button{width:100%}}

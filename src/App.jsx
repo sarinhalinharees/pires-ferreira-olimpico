@@ -60,7 +60,7 @@ function useContent() {
 function Home({ olympiads, events }) {
   return <>
     <Hero eyebrow="OLIMPÍADAS ACADÊMICAS" title={<>Pires Ferreira <em>Olímpico</em></>} subtitle="Tudo sobre as olimpíadas de conhecimento das quais os estudantes de Pires Ferreira participam.">
-      <div className="chips">{olympiads.map(o => <span key={o.id}>{o.acronym}</span>)}</div>
+      <div className="chips">{olympiads.map(o => <Link key={o.id} to={`/olimpiadas/${encodeURIComponent(o.acronym)}`} aria-label={`Ver informações sobre ${o.name}`}>{o.acronym}</Link>)}</div>
     </Hero>
     <main className="container home-cards">
       <div className="feature-grid">
@@ -118,21 +118,125 @@ function CalendarPage({ olympiads, events }) {
   const [year, setYear] = useState(now.getFullYear());
   const [filter, setFilter] = useState("all");
   const [showAll, setShowAll] = useState(false);
-  const monthEvents = events.filter(e => {
-    const d = new Date(`${e.start_date}T12:00:00`);
-    return d.getMonth() === month && d.getFullYear() === year && (filter === "all" || e.olympiad_id === filter);
+
+  const dateAtNoon = (value) => value ? new Date(`${value}T12:00:00`) : null;
+  const eventMatchesFilter = (event) => filter === "all" || String(event.olympiad_id) === String(filter);
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+
+  // Inclui eventos que começam antes do mês e continuam dentro dele.
+  const monthEvents = events.filter((event) => {
+    const start = dateAtNoon(event.start_date);
+    const end = dateAtNoon(event.end_date || event.start_date);
+    return start && end && start <= monthEnd && end >= monthStart && eventMatchesFilter(event);
   });
+
   const days = new Date(year, month + 1, 0).getDate();
   const offset = new Date(year, month, 1).getDay();
-  const monthName = new Date(year, month, 1).toLocaleDateString("pt-BR", {month:"long",year:"numeric"});
-  const shift = (n) => { const d = new Date(year, month + n, 1); setMonth(d.getMonth()); setYear(d.getFullYear()); };
-  const list = events.filter(e => filter === "all" || e.olympiad_id === filter).sort((a,b) => a.start_date.localeCompare(b.start_date));
+  const monthName = new Date(year, month, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const shift = (amount) => {
+    const next = new Date(year, month + amount, 1);
+    setMonth(next.getMonth());
+    setYear(next.getFullYear());
+  };
+
+  const list = events
+    .filter(eventMatchesFilter)
+    .sort((a, b) => (a.start_date || "").localeCompare(b.start_date || ""));
+  const visibleEvents = showAll ? list : monthEvents;
+  const years = [...new Set([
+    now.getFullYear() - 1,
+    now.getFullYear(),
+    now.getFullYear() + 1,
+    ...events.flatMap((event) => [dateAtNoon(event.start_date)?.getFullYear(), dateAtNoon(event.end_date)?.getFullYear()]).filter(Boolean)
+  ])].sort((a, b) => a - b);
+
+  const olympiadAcronym = (event) =>
+    event.olympiads?.acronym ||
+    olympiads.find((item) => String(item.id) === String(event.olympiad_id))?.acronym ||
+    "Olimpíada";
+
+  const eventOccursOnDay = (event, day) => {
+    if (event.date_precision === "month") return false;
+    const current = new Date(year, month, day, 12);
+    const start = dateAtNoon(event.start_date);
+    const end = dateAtNoon(event.end_date || event.start_date);
+    return start && end && current >= start && current <= end;
+  };
+
+  const eventLink = (event) => `/olimpiadas/${encodeURIComponent(olympiadAcronym(event))}`;
+
   return <>
     <Hero title="Calendário" subtitle="Etapas e datas cadastradas das olimpíadas. Clique em um evento para ver os detalhes da competição."/>
     <main className="container page-content">
-      <div className="filters"><label>Olimpíada<select value={filter} onChange={e => setFilter(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select></label><label>Mês<select value={month} onChange={e => setMonth(Number(e.target.value))}>{Array.from({length:12},(_,i)=><option value={i} key={i}>{new Date(2026,i,1).toLocaleDateString("pt-BR",{month:"long"})}</option>)}</select></label><label>Ano<select value={year} onChange={e => setYear(Number(e.target.value))}>{[2025,2026,2027,2028,2029].map(y=><option key={y}>{y}</option>)}</select></label></div>
-      <div className="calendar-layout"><section className="calendar panel"><div className="calendar-head"><button onClick={()=>shift(-1)} aria-label="Mês anterior"><ChevronLeft/></button><h2>{monthName}</h2><button onClick={()=>shift(1)} aria-label="Próximo mês"><ChevronRight/></button></div><div className="calendar-grid">{["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"].map(d=><div className="weekday" key={d}>{d}</div>)}{Array.from({length:offset},(_,i)=><div className="day blank" key={`b${i}`}/>)}{Array.from({length:days},(_,i)=>{const day=i+1;const dayEvents=monthEvents.filter(e=>{const d=new Date(`${e.start_date}T12:00:00`);return d.getDate()===day});return <div className="day" key={day}><span>{day}</span>{dayEvents.slice(0,2).map(e=><Link key={e.id} to={`/olimpiadas/${encodeURIComponent(e.olympiads?.acronym || olympiads.find(o=>o.id===e.olympiad_id)?.acronym || "")}`} className="day-event">{e.olympiads?.acronym || olympiads.find(o=>o.id===e.olympiad_id)?.acronym || "Evento"}</Link>)}</div>})}</div></section>
-      <section className="events-column"><div className="events-title"><h2>Eventos</h2><div className="toggle"><button className={!showAll?"active":""} onClick={()=>setShowAll(false)}>Do mês</button><button className={showAll?"active":""} onClick={()=>setShowAll(true)}>Todos</button></div></div>{(showAll?list:monthEvents).map(e=><Link className="event-card" key={e.id} to={`/olimpiadas/${encodeURIComponent(e.olympiads?.acronym || olympiads.find(o=>o.id===e.olympiad_id)?.acronym || "")}`}><b>{fmt(e.start_date)}{e.end_date && e.end_date!==e.start_date?` – ${fmt(e.end_date)}`:""}</b><strong>{e.title}</strong><span>Etapa: {e.stage || infoPending}</span>{e.description && <p>{e.description}</p>}</Link>)}{!(showAll?list:monthEvents).length && <p className="empty">{infoPending}. Nenhum evento cadastrado para este período.</p>}</section></div>
+      <div className="filters">
+        <label>Olimpíada
+          <select value={filter} onChange={(event) => setFilter(event.target.value)}>
+            <option value="all">Todas as olimpíadas</option>
+            {olympiads.map((item) => <option value={item.id} key={item.id}>{item.acronym}</option>)}
+          </select>
+        </label>
+        <label>Mês
+          <select value={month} onChange={(event) => setMonth(Number(event.target.value))}>
+            {Array.from({ length: 12 }, (_, index) =>
+              <option value={index} key={index}>
+                {new Date(year, index, 1).toLocaleDateString("pt-BR", { month: "long" })}
+              </option>
+            )}
+          </select>
+        </label>
+        <label>Ano
+          <select value={year} onChange={(event) => setYear(Number(event.target.value))}>
+            {years.map((item) => <option value={item} key={item}>{item}</option>)}
+          </select>
+        </label>
+      </div>
+
+      <div className="calendar-layout">
+        <section className="calendar panel">
+          <div className="calendar-head">
+            <button onClick={() => shift(-1)} aria-label="Mês anterior"><ChevronLeft/></button>
+            <h2>{monthName}</h2>
+            <button onClick={() => shift(1)} aria-label="Próximo mês"><ChevronRight/></button>
+          </div>
+          <div className="calendar-grid">
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <div className="weekday" key={day}>{day}</div>)}
+            {Array.from({ length: offset }, (_, index) => <div className="day blank" key={`blank-${index}`}/>)}
+            {Array.from({ length: days }, (_, index) => {
+              const day = index + 1;
+              const dayEvents = monthEvents.filter((event) => eventOccursOnDay(event, day));
+              return <div className="day" key={day}>
+                <span>{day}</span>
+                {dayEvents.slice(0, 3).map((event) =>
+                  <Link key={event.id} to={eventLink(event)} className="day-event" title={event.title}>
+                    {olympiadAcronym(event)}
+                  </Link>
+                )}
+                {dayEvents.length > 3 && <small>+{dayEvents.length - 3} evento(s)</small>}
+              </div>;
+            })}
+          </div>
+        </section>
+
+        <section className="events-column">
+          <div className="events-title">
+            <h2>Eventos</h2>
+            <div className="toggle">
+              <button className={!showAll ? "active" : ""} onClick={() => setShowAll(false)}>Do mês</button>
+              <button className={showAll ? "active" : ""} onClick={() => setShowAll(true)}>Todos</button>
+            </div>
+          </div>
+          {visibleEvents.map((event) =>
+            <Link className="event-card" key={event.id} to={eventLink(event)}>
+              <b>{event.date_precision === "month" ? (event.date_note || dateAtNoon(event.start_date)?.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })) : `${fmt(event.start_date)}${event.end_date && event.end_date !== event.start_date ? ` – ${fmt(event.end_date)}` : ""}`}</b>
+              <strong>{event.title}</strong>
+              <span>Olimpíada: {olympiadAcronym(event)} · Etapa: {event.stage || infoPending}</span>
+              {event.description && <p>{event.description}</p>}
+            </Link>
+          )}
+          {!visibleEvents.length && <p className="empty">Nenhum evento cadastrado para este período. Os eventos aparecerão aqui depois de serem registrados na Administração.</p>}
+        </section>
+      </div>
     </main>
   </>;
 }
@@ -148,7 +252,7 @@ function ResultsPage({ results, olympiads }) {
     <main className="container page-content">
       <div className="notice-bar"><b>Somente estudantes de Pires Ferreira</b><span>Resultados de outros municípios não são exibidos.</span></div>
       <div className="result-filters"><select value={olympiad} onChange={e=>setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym}</option>)}</select><select value={edition} onChange={e=>setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e=><option key={e}>{e}</option>)}</select><div className="searchbox"><Search size={18}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div></div>
-      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada</th><th>Edição</th><th>Premiação</th></tr></thead><tbody>{filtered.map(r=><tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.olympiads?.acronym || olympiads.find(o=>o.id===r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado publicado</b><span>Os resultados oficiais aparecerão aqui quando forem cadastrados pela administração.</span></div>}
+      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada</th><th>Edição</th><th>Premiação</th></tr></thead><tbody>{filtered.map(r=><tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.olympiads?.acronym || olympiads.find(o=>o.id===r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado cadastrado nesta versão</b><span>Os resultados do site antigo não foram importados automaticamente. Eles aparecerão aqui depois de serem cadastrados no painel administrativo.</span></div>}
     </main>
   </>;
 }
@@ -156,19 +260,102 @@ function ResultsPage({ results, olympiads }) {
 function Admin({ data }) {
   const { olympiads, events, results, refresh } = data;
   const [session, setSession] = useState(null);
+  const [authorized, setAuthorized] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [inviteSecret,setInviteSecret]=useState("");
+  const [newAdminEmail,setNewAdminEmail]=useState("");
+  const [newAdminPassword,setNewAdminPassword]=useState("");
   const [error,setError]=useState("");
   const [tab,setTab]=useState("olympiads");
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
+  const [showCreate,setShowCreate]=useState(false);
   const navigate=useNavigate();
 
-  useEffect(()=>{ if(!supabase)return; supabase.auth.getSession().then(({data})=>setSession(data.session)); const {data:listener}=supabase.auth.onAuthStateChange((_e,s)=>setSession(s)); return ()=>listener.subscription.unsubscribe(); },[]);
-  async function login(e){e.preventDefault();setError("");setBusy(true);const {data,error}=await supabase.auth.signInWithPassword({email,password});setBusy(false);if(error)setError(error.message);else setSession(data.session);}
-  async function logout(){await supabase.auth.signOut();setSession(null);navigate("/");}
-  if(!isSupabaseConfigured) return <><Hero title="Administração" subtitle="Acesso restrito aos administradores autorizados."/><main className="container narrow page-content"><div className="empty-state"><ShieldCheck size={34}/><b>Banco de dados ainda não conectado</b><span>Configure o Supabase seguindo o README e execute o SQL incluído no projeto para ativar o login e a administração.</span></div></main></>;
-  if(!session) return <><Hero title="Administração" subtitle="Entre com sua conta de administrador."/></> && <main className="container narrow page-content"><form className="login-card" onSubmit={login}><span className="feature-icon"><ShieldCheck/></span><h2>Acesso administrativo</h2><label>E-mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Senha<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>{error&&<p className="error">{error}</p>}<button className="primary-btn" disabled={busy}>{busy?"Entrando...":"Entrar"}</button><p className="muted small">O cadastro de administradores é feito por convite seguro, não por inscrição pública.</p></form></main>;
+  useEffect(()=>{
+    if(!supabase){setChecking(false);return;}
+    let mounted=true;
+    const checkSession=async()=>{
+      const {data:{session:current}}=await supabase.auth.getSession();
+      if(!mounted)return;
+      setSession(current);
+      if(current?.user?.id){
+        const {data:profile,error:profileError}=await supabase
+          .from("admin_profiles").select("user_id,role").eq("user_id",current.user.id).maybeSingle();
+        if(!mounted)return;
+        if(profile && profile.role==="admin"){setAuthorized(true);}
+        else {
+          await supabase.auth.signOut();
+          setSession(null);
+          setAuthorized(false);
+          setError("Esta conta não possui autorização administrativa.");
+        }
+      } else {setAuthorized(false);}
+      setChecking(false);
+    };
+    checkSession();
+    const {data:listener}=supabase.auth.onAuthStateChange(async(_event,current)=>{
+      if(!mounted)return;
+      setSession(current);
+      if(!current){setAuthorized(false);setChecking(false);}
+    });
+    return ()=>{mounted=false;listener.subscription.unsubscribe();};
+  },[]);
+
+  async function login(e){
+    e.preventDefault();setError("");setBusy(true);
+    const {data,error:loginError}=await supabase.auth.signInWithPassword({email,password});
+    if(loginError){setError(loginError.message);setBusy(false);return;}
+    const {data:profile,error:profileError}=await supabase.from("admin_profiles")
+      .select("user_id,role").eq("user_id",data.user.id).maybeSingle();
+    if(profileError || !profile || profile.role!=="admin"){
+      await supabase.auth.signOut();
+      setError("A conta foi autenticada, mas não está autorizada como administradora.");
+      setBusy(false);return;
+    }
+    setSession(data.session);setAuthorized(true);setBusy(false);
+  }
+
+  async function createAdmin(e){
+    e.preventDefault();setError("");setMessage("");setBusy(true);
+    const {data,error:fnError}=await supabase.functions.invoke("create-admin",{
+      body:{email:newAdminEmail,password:newAdminPassword,inviteSecret}
+    });
+    setBusy(false);
+    if(fnError || data?.error){setError(data?.error || fnError.message || "Não foi possível criar o administrador.");return;}
+    setMessage("Administrador criado. Agora entre com o e-mail e a senha cadastrados.");
+    setShowCreate(false);setEmail(newAdminEmail);setPassword("");
+    setNewAdminEmail("");setNewAdminPassword("");setInviteSecret("");
+  }
+
+  async function logout(){await supabase.auth.signOut();setSession(null);setAuthorized(false);navigate("/");}
+
+  if(!isSupabaseConfigured) return <><Hero title="Administração" subtitle="Acesso restrito aos administradores autorizados."/><main className="container narrow page-content"><div className="empty-state"><ShieldCheck size={34}/><b>Banco de dados ainda não conectado</b><span>Configure o Supabase para ativar a administração.</span></div></main></>;
+  if(checking) return <><Hero title="Administração" subtitle="Verificando acesso..."/><main className="container narrow page-content"><p>Carregando...</p></main></>;
+  if(!session || !authorized) return <>
+    <Hero title="Administração" subtitle="Entre com sua conta de administrador."/>
+    <main className="container narrow page-content">
+      <form className="login-card" onSubmit={login}>
+        <span className="feature-icon"><ShieldCheck/></span><h2>Acesso administrativo</h2>
+        <label>E-mail<input type="email" required value={email} onChange={e=>setEmail(e.target.value)}/></label>
+        <label>Senha<input type="password" required value={password} onChange={e=>setPassword(e.target.value)}/></label>
+        {error&&<p className="error">{error}</p>}{message&&<p className="success">{message}</p>}
+        <button className="primary-btn" disabled={busy}>{busy?"Entrando...":"Entrar"}</button>
+        <p className="muted small">O cadastro é restrito e exige um convite privado validado no servidor.</p>
+        <button type="button" className="text-button" onClick={()=>{setShowCreate(!showCreate);setError("");}}>{showCreate?"Cancelar criação":"Criar a primeira conta administrativa"}</button>
+      </form>
+      {showCreate&&<form className="login-card create-admin-card" onSubmit={createAdmin}>
+        <h2>Criar administrador autorizado</h2>
+        <p className="muted small">Use o segredo de convite configurado nos Secrets da função Supabase. Ele será enviado apenas nesta solicitação e não ficará salvo no site.</p>
+        <label>E-mail do administrador<input type="email" required value={newAdminEmail} onChange={e=>setNewAdminEmail(e.target.value)}/></label>
+        <label>Senha (mínimo 12 caracteres)<input type="password" minLength={12} required value={newAdminPassword} onChange={e=>setNewAdminPassword(e.target.value)}/></label>
+        <label>Segredo privado de convite<input type="password" required value={inviteSecret} onChange={e=>setInviteSecret(e.target.value)}/></label>
+        <button className="primary-btn" disabled={busy}>{busy?"Criando...":"Criar conta administrativa"}</button>
+      </form>}
+    </main>
+  </>;
   return <><Hero title="Painel administrativo" subtitle="Gerencie o conteúdo publicado no Pires Ferreira Olímpico."><button className="hero-logout" onClick={logout}><LogOut size={15}/> Sair</button></Hero><main className="container page-content"><div className="admin-tabs"><button className={tab==="olympiads"?"active":""} onClick={()=>setTab("olympiads")}>Olimpíadas</button><button className={tab==="events"?"active":""} onClick={()=>setTab("events")}>Calendário</button><button className={tab==="results"?"active":""} onClick={()=>setTab("results")}>Resultados</button></div><AdminEditor tab={tab} olympiads={olympiads} events={events} results={results} refresh={refresh} setMessage={setMessage}/>{message&&<p className="success">{message}</p>}</main></>;
 }
 

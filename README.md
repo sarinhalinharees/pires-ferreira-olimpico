@@ -93,3 +93,15 @@ No GitHub, envie o repositório. No Cloudflare Pages:
 - A Edge Function de convite é fornecida, mas precisa ser implantada e configurada no projeto Supabase.
 - O site deve ser testado depois de configurar as chaves e políticas RLS.
 - Dados iniciais das 13 olimpíadas incluem apenas siglas e nomes; informações factuais devem ser preenchidas por administrador.
+
+
+## Primeira conta administrativa (configuração segura)
+
+1. No Supabase, abra **Edge Functions** e faça deploy de `create-admin`.
+2. Em **Edge Function Secrets**, configure `ADMIN_INVITE_SECRET` com um segredo novo, longo e privado.
+3. Confirme que a função já tem `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY` como secrets do ambiente Supabase.
+4. No SQL Editor, execute `supabase/migrations/0002_seed_events_from_screenshots.sql` para importar os eventos transcritos das capturas.
+5. Abra `https://pires-ferreira-olimpico.pages.dev/admin`, selecione **Criar a primeira conta administrativa** e informe e-mail, senha (mínimo 12 caracteres) e o segredo de convite.
+6. Depois de criada, entre normalmente. Não compartilhe nem coloque o segredo de convite no GitHub.
+
+A função cria usuários com e-mail já confirmado, mas somente após validar o segredo no servidor. A interface também verifica `admin_profiles` antes de abrir o painel.

@@ -189,11 +189,15 @@ function ResultsPage({ results, olympiads }) {
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
   const [kind, setKind] = useState("all");
+  const [school, setSchool] = useState("all");
   const [query, setQuery] = useState("");
   const editions = [...new Set(results.map(r => r.edition).filter(Boolean))].sort().reverse();
+  const schools = [...new Set(results.map(r => (r.school_name || r.schools?.name || "").trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
   const filtered = results.filter(r =>
     (olympiad === "all" || r.olympiad_id === olympiad) &&
     (edition === "all" || r.edition === edition) &&
+    (school === "all" || (r.school_name || r.schools?.name || "").trim() === school) &&
     (kind === "all" || (r.result_type || "official") === kind) &&
     `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""} ${r.level || ""}`.toLowerCase().includes(query.toLowerCase()) &&
     (!r.municipality && !r.schools?.municipality || (r.municipality || r.schools?.municipality).toLowerCase().includes("pires ferreira"))
@@ -210,6 +214,7 @@ function ResultsPage({ results, olympiads }) {
       <div className="result-filters">
         <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
         <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
+        <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>
         <div className="searchbox"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
       {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo.</span></div>}

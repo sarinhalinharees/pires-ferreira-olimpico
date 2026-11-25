@@ -1,0 +1,16 @@
+
+/* Filtro por escola na página de resultados */
+.result-filters {
+  display: grid;
+  grid-template-columns: 200px 150px 220px minmax(220px, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+@media (max-width: 800px) {
+  .result-filters { grid-template-columns: 1fr 1fr; }
+  .result-filters .searchbox { grid-column: 1 / -1; }
+}
+@media (max-width: 560px) {
+  .result-filters { grid-template-columns: 1fr; }
+  .result-filters .searchbox { grid-column: auto; }
+}

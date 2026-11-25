@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, NavLink, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import { Award, CalendarDays, ChevronLeft, ChevronRight, ExternalLink, GraduationCap, Medal, Search, ShieldCheck, Trophy, ArrowRight, LogOut, Plus, Save, Trash2, Menu, X } from "lucide-react";
 import { initialOlympiads, infoPending } from "./data/olympiads";

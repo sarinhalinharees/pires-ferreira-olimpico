@@ -81,6 +81,7 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState(null);
   const [format, setFormat] = useState("standard");
+  const [municipalityFilter, setMunicipalityFilter] = useState("all");
 
   const preview = useMemo(() => rows.map((row) => {
     const source = pick(row, ["olimpiada", "atividade", "competicao"]);
@@ -116,19 +117,22 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
     return result;
   }), [rows, edition, olympiadId, format, officialAward, officialLevel]);
 
-  const invalidRows = preview.filter((r) =>
+  const selectedRows = municipalityFilter === "pires"
+    ? preview.filter((r) => norm(r.municipality) === "pires ferreira")
+    : preview;
+  const invalidRows = selectedRows.filter((r) =>
     !r.participant_name || !r.school_name || !r.municipality || !r.award ||
     (r.score !== null && !Number.isFinite(r.score))
   );
   const duplicatesInFile = useMemo(() => {
     const seen = new Set();
     const duplicates = new Set();
-    preview.forEach((row, index) => {
+    selectedRows.forEach((row, index) => {
       if (seen.has(row.import_key)) duplicates.add(index);
       seen.add(row.import_key);
     });
     return duplicates;
-  }, [preview]);
+  }, [selectedRows]);
   const localCount = preview.filter((r) => norm(r.municipality) === "pires ferreira").length;
   const otherMunicipalityCount = preview.length - localCount;
   const officialCount = preview.filter((r) => r.result_type === "official").length;
@@ -176,17 +180,22 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
     setError(""); setNotice(""); setSummary(null);
     if (!supabase) { setError("O Supabase não está configurado."); return; }
     if (!olympiadId) { setError("Selecione a olimpíada correspondente."); return; }
-    if (!preview.length) { setError("Selecione um arquivo CSV antes de importar."); return; }
+    if (!selectedRows.length) { setError("Não há registros para importar com o filtro selecionado."); return; }
     if (invalidRows.length) { setError(`Existem ${invalidRows.length} linha(s) com dados incompletos. Confira nome, escola, município e premiação.`); return; }
     if (duplicatesInFile.size) { setError(`O arquivo contém ${duplicatesInFile.size} linha(s) repetida(s). Remova as duplicatas antes de importar.`); return; }
 
     setBusy(true);
     try {
-      const keys = preview.map((r) => r.import_key);
-      const { data: existing, error: lookupError } = await supabase.from("results").select("import_key").in("import_key", keys);
-      if (lookupError) throw new Error(`Não foi possível verificar duplicidades. Confira se a migração SQL 0003 foi executada. Detalhe: ${lookupError.message}`);
-      const existingKeys = new Set((existing || []).map((r) => r.import_key));
-      const toInsert = preview.filter((r) => !existingKeys.has(r.import_key)).map((r) => ({
+      // Consultas em lotes pequenos evitam URLs muito longas no PostgREST.
+      const chunks = (items, size) => Array.from({ length: Math.ceil(items.length / size) }, (_, i) => items.slice(i * size, (i + 1) * size));
+      const existingKeys = new Set();
+      for (const keyBatch of chunks(selectedRows.map((r) => r.import_key), 100)) {
+        const { data: existing, error: lookupError } = await supabase
+          .from("results").select("import_key").in("import_key", keyBatch);
+        if (lookupError) throw new Error(`Falha ao consultar registros existentes: ${lookupError.message}`);
+        (existing || []).forEach((r) => existingKeys.add(r.import_key));
+      }
+      const toInsert = selectedRows.filter((r) => !existingKeys.has(r.import_key)).map((r) => ({
         olympiad_id: olympiadId,
         participant_name: r.participant_name,
         school_name: r.school_name,
@@ -200,15 +209,20 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
         import_key: r.import_key
       }));
       if (!toInsert.length) {
-        setSummary({ imported: 0, skipped: preview.length });
+        setSummary({ imported: 0, skipped: selectedRows.length });
         setNotice("Todos os registros deste arquivo já foram importados anteriormente.");
         return;
       }
-      const { error: insertError } = await supabase.from("results").insert(toInsert);
-      if (insertError) throw insertError;
-      const skipped = preview.length - toInsert.length;
-      setSummary({ imported: toInsert.length, skipped });
-      setNotice(`Importação concluída: ${toInsert.length} registro(s) novo(s) e ${skipped} já existente(s).`);
+      // Inserção em lotes para evitar payloads grandes e facilitar a recuperação de erros.
+      let insertedCount = 0;
+      for (const insertBatch of chunks(toInsert, 100)) {
+        const { error: insertError } = await supabase.from("results").insert(insertBatch);
+        if (insertError) throw new Error(`Falha ao inserir o lote ${Math.floor(insertedCount / 100) + 1}: ${insertError.message}. ${insertedCount} registro(s) já foram inseridos; os demais podem ser reenviados com segurança após verificar duplicidades.`);
+        insertedCount += insertBatch.length;
+      }
+      const skipped = selectedRows.length - toInsert.length;
+      setSummary({ imported: insertedCount, skipped });
+      setNotice(`Importação concluída: ${insertedCount} registro(s) novo(s) e ${skipped} já existente(s).`);
       await refresh();
     } catch (e) {
       setError(e.message || "Ocorreu um erro durante a importação.");
@@ -243,13 +257,18 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
         <div><b>{otherMunicipalityCount}</b><span>Outros municípios</span></div>
         <div><b>{invalidRows.length}</b><span>Linhas incompletas</span></div>
       </div>
+      <div className="csv-filter-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "12px 0" }}>
+        <button type="button" className={municipalityFilter === "all" ? "primary-btn" : "secondary-btn"} onClick={() => setMunicipalityFilter("all")}>Todos os municípios ({preview.length})</button>
+        <button type="button" className={municipalityFilter === "pires" ? "primary-btn" : "secondary-btn"} onClick={() => setMunicipalityFilter("pires")}>Somente Pires Ferreira ({localCount})</button>
+      </div>
+      <p className="csv-muted">Filtro atual: {municipalityFilter === "pires" ? "somente Pires Ferreira" : "todos os municípios"}. Serão importados {selectedRows.length} registro(s).</p>
       <div className="csv-preview-wrap"><table className="csv-preview"><thead><tr><th>Estudante</th><th>Escola</th><th>Município</th><th>Edição</th><th>Nível</th><th>Premiação</th></tr></thead>
-        <tbody>{preview.slice(0, 15).map((r, i) => <tr key={`${r.raw.__line}-${i}`}><td>{r.participant_name || "—"}</td><td>{r.school_name || "—"}</td><td>{r.municipality || "—"}</td><td>{r.edition}</td><td>{r.level || "—"}</td><td>{r.award || "—"}</td></tr>)}</tbody>
+        <tbody>{selectedRows.slice(0, 15).map((r, i) => <tr key={`${r.raw.__line}-${i}`}><td>{r.participant_name || "—"}</td><td>{r.school_name || "—"}</td><td>{r.municipality || "—"}</td><td>{r.edition}</td><td>{r.level || "—"}</td><td>{r.award || "—"}</td></tr>)}</tbody>
       </table></div>
-      {preview.length > 15 && <p className="csv-muted">Exibindo os 15 primeiros de {preview.length} registros. Todos serão importados após a confirmação.</p>}
-      {otherMunicipalityCount > 0 && <p className="csv-muted">O arquivo contém registros de outros municípios. Eles serão importados com o município original e não serão exibidos na página pública de Pires Ferreira, conforme o filtro de resultados do site.</p>}
-      <button className="primary-btn csv-import-button" onClick={importRows} disabled={busy || invalidRows.length > 0 || duplicatesInFile.size > 0 || !olympiadId}>
-        {busy ? <><Loader2 className="spin" size={17}/> Importando...</> : `Confirmar importação de ${preview.length} resultado(s)`}
+      {selectedRows.length > 15 && <p className="csv-muted">Exibindo os 15 primeiros de {selectedRows.length} registros selecionados.</p>}
+      {otherMunicipalityCount > 0 && <p className="csv-muted">O arquivo contém registros de outros municípios. Escolha acima se deseja importar todos ou somente os estudantes de Pires Ferreira.</p>}
+      <button className="primary-btn csv-import-button" onClick={importRows} disabled={busy || !selectedRows.length || invalidRows.length > 0 || duplicatesInFile.size > 0 || !olympiadId}>
+        {busy ? <><Loader2 className="spin" size={17}/> Importando...</> : `Confirmar importação de ${selectedRows.length} resultado(s)`}
       </button>
     </>}
     {summary && <p className="csv-muted">Resumo: {summary.imported} importado(s), {summary.skipped} ignorado(s) por já existir(em).</p>}

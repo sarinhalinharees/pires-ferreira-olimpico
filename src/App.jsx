@@ -22,22 +22,6 @@ function Hero({ eyebrow, title, subtitle, children }) {
   return <section className="hero"><div className="container hero-inner">{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1>{subtitle && <p>{subtitle}</p>}{children}</div></section>;
 }
 
-async function fetchAllResults() {
-  const pageSize = 1000;
-  const all = [];
-  for (let from = 0; ; from += pageSize) {
-    const { data, error } = await supabase
-      .from("results")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .range(from, from + pageSize - 1);
-    if (error) return { data: null, error };
-    all.push(...(data || []));
-    if (!data || data.length < pageSize) break;
-  }
-  return { data: all, error: null };
-}
-
 function useContent() {
   const [olympiads, setOlympiads] = useState(initialOlympiads);
   const [events, setEvents] = useState([]);
@@ -197,6 +181,15 @@ function CalendarPage({ olympiads, events }) {
   </>;
 }
 
+function getAwardTone(award) {
+  const value = String(award || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  if (value.includes("ouro")) return "award-gold";
+  if (value.includes("prata")) return "award-silver";
+  if (value.includes("bronze")) return "award-bronze";
+  if (value.includes("menção") || value.includes("mencao")) return "award-honorable";
+  return "award-default";
+}
+
 function ResultsPage({ olympiads }) {
   const PAGE_SIZE = 50;
   const [olympiad, setOlympiad] = useState("all");
@@ -287,7 +280,16 @@ function ResultsPage({ olympiads }) {
         <div className="searchbox"><Search size={18}/><input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
       {loading ? <div className="empty-state"><b>Carregando resultados...</b></div> : error ? <div className="empty-state"><b>Não foi possível carregar os resultados</b><span>{error}</span></div> : rows.length ? <>
-        <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || infoPending}</td><td>{r.activity_name || olympiads.find(o => o.id === r.olympiad_id)?.acronym || infoPending}</td><td>{r.edition || "—"}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div>
+        <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || infoPending}</td><td>{r.activity_name || olympiads.find(o => o.id === r.olympiad_id)?.acronym || infoPending}</td><td>{r.edition || "—"}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td><span className={`award-badge ${getAwardTone(r.award)}`} style={{
+              display: "inline-flex", alignItems: "center", padding: "4px 10px",
+              borderRadius: 999, fontWeight: 700, fontSize: 12, lineHeight: 1.4,
+              whiteSpace: "normal",
+              ...(getAwardTone(r.award) === "award-gold" ? { color: "#8A5A00", background: "#FFF1C2", border: "1px solid #E7C35B" } :
+                getAwardTone(r.award) === "award-silver" ? { color: "#596579", background: "#EEF1F5", border: "1px solid #C6CDD6" } :
+                getAwardTone(r.award) === "award-bronze" ? { color: "#8B4E2D", background: "#F8E5D8", border: "1px solid #D8A17E" } :
+                getAwardTone(r.award) === "award-honorable" ? { color: "#315D83", background: "#EAF2FA", border: "1px solid #B8D0E6" } :
+                { color: "#334155", background: "#F1F5F9", border: "1px solid #D8E0E8" })
+            }}>{r.award || infoPending}</span></td></tr>)}</tbody></table></div>
         <div className="pagination-controls" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16 }}>
           <span>{total} resultado(s) · Página {page + 1} de {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
           <div style={{ display: "flex", gap: 8 }}><button className="secondary-btn" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</button><button className="secondary-btn" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>Próxima</button></div>
@@ -301,9 +303,21 @@ function Admin({ data }) {
   const { olympiads, events, refresh } = data;
   const [results, setResults] = useState([]);
   const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsCount, setResultsCount] = useState(0);
+  const [resultsPage, setResultsPage] = useState(0);
+  const ADMIN_PAGE_SIZE = 50;
   const refreshAdmin = async () => {
-    const result = await fetchAllResults();
-    if (!result.error) setResults(result.data || []);
+    if (!supabase) return { error: new Error("Supabase não está conectado.") };
+    setResultsLoading(true);
+    const from = resultsPage * ADMIN_PAGE_SIZE;
+    const result = await supabase.from("results").select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + ADMIN_PAGE_SIZE - 1);
+    if (!result.error) {
+      setResults(result.data || []);
+      setResultsCount(result.count || 0);
+    }
+    setResultsLoading(false);
     return result;
   };
   const [session, setSession] = useState(null);
@@ -349,13 +363,20 @@ function Admin({ data }) {
     if (!authorized || !supabase) return;
     let active = true;
     setResultsLoading(true);
-    fetchAllResults().then(result => {
-      if (!active) return;
-      if (!result.error) setResults(result.data || []);
-      setResultsLoading(false);
-    });
+    const from = resultsPage * ADMIN_PAGE_SIZE;
+    supabase.from("results").select("*", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .range(from, from + ADMIN_PAGE_SIZE - 1)
+      .then(result => {
+        if (!active) return;
+        if (!result.error) {
+          setResults(result.data || []);
+          setResultsCount(result.count || 0);
+        }
+        setResultsLoading(false);
+      });
     return () => { active = false; };
-  }, [authorized]);
+  }, [authorized, resultsPage]);
 
   async function login(e){
     e.preventDefault();setError("");setBusy(true);
@@ -403,10 +424,10 @@ function Admin({ data }) {
       </form>}
     </main>
   </>;
-  return <><Hero title="Painel administrativo" subtitle="Gerencie o conteúdo publicado no Pires Ferreira Olímpico."><button className="hero-logout" onClick={logout}><LogOut size={15}/> Sair</button></Hero><main className="container page-content"><div className="admin-tabs"><button className={tab==="olympiads"?"active":""} onClick={()=>setTab("olympiads")}>Olimpíadas</button><button className={tab==="events"?"active":""} onClick={()=>setTab("events")}>Calendário</button><button className={tab==="results"?"active":""} onClick={()=>setTab("results")}>Resultados</button></div><AdminEditor tab={tab} olympiads={olympiads} events={events} results={results} refresh={async () => { await refresh(); await refreshAdmin(); }} setMessage={setMessage}/>{message&&<p className="success">{message}</p>}</main></>;
+  return <><Hero title="Painel administrativo" subtitle="Gerencie o conteúdo publicado no Pires Ferreira Olímpico."><button className="hero-logout" onClick={logout}><LogOut size={15}/> Sair</button></Hero><main className="container page-content"><div className="admin-tabs"><button className={tab==="olympiads"?"active":""} onClick={()=>setTab("olympiads")}>Olimpíadas</button><button className={tab==="events"?"active":""} onClick={()=>setTab("events")}>Calendário</button><button className={tab==="results"?"active":""} onClick={()=>setTab("results")}>Resultados</button></div><AdminEditor tab={tab} olympiads={olympiads} events={events} results={results} resultsCount={resultsCount} resultsPage={resultsPage} resultsPageSize={ADMIN_PAGE_SIZE} resultsLoading={resultsLoading} setResultsPage={setResultsPage} refresh={async () => { await refresh(); await refreshAdmin(); }} setMessage={setMessage}/>{message&&<p className="success">{message}</p>}</main></>;
 }
 
-function AdminEditor({tab,olympiads,events,results,refresh,setMessage}) {
+function AdminEditor({tab,olympiads,events,results,resultsCount,resultsPage,resultsPageSize,resultsLoading,setResultsPage,refresh,setMessage}) {
   const [selected,setSelected]=useState("");
   const [form,setForm]=useState({});
   const [busy,setBusy]=useState(false);
@@ -440,7 +461,13 @@ function AdminEditor({tab,olympiads,events,results,refresh,setMessage}) {
     : <><label>Olimpíada<select required value={form.olympiad_id||""} onChange={e=>change("olympiad_id",e.target.value)}><option value="">Selecione</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym} — {o.name}</option>)}</select></label>{tab==="events"?<>{input("title","Título do evento","text",true)}{input("start_date","Data inicial","date",true)}{input("end_date","Data final","date")}{input("stage","Etapa")}{textarea("description","Informações")}</>:<>{input("participant_name","Nome do participante","text",true)}{input("school_name","Escola")}{input("municipality","Município")}{input("edition","Edição")}{input("award","Premiação / classificação")}{input("score","Nota / pontuação","number")}{input("level","Nível")}{input("activity_name","Nome da atividade") }<label>Tipo de resultado<select value={form.result_type||"official"} onChange={e=>change("result_type",e.target.value)}><option value="official">Olimpíada oficial</option><option value="simulado">Simulado / atividade</option></select></label></>}</>}
     <div className="form-actions"><button className="primary-btn" disabled={busy}><Save size={16}/>{busy?"Salvando...":"Salvar"}</button>{selected&&<button type="button" className="secondary-btn" onClick={()=>{setSelected("");setForm({});}}>Cancelar</button>}</div>
   </form>
-  <div className="record-list"><h2>Registros ({records.length})</h2>{records.map(r=><div className="record" key={r.id}><div><b>{r.acronym||r.title||r.participant_name}</b><span>{r.name||r.start_date||r.edition||r.activity_name||""}</span></div><button onClick={()=>edit(r)} aria-label="Editar">Editar</button><button className="delete-btn" onClick={()=>remove(r.id)} aria-label="Excluir"><Trash2 size={16}/></button></div>)}</div>
+  <div className="record-list"><h2>Registros ({tab === "results" ? resultsCount : records.length})</h2>
+    {tab === "results" && resultsLoading ? <p className="muted">Carregando resultados...</p> : records.map(r=><div className="record" key={r.id}><div><b>{r.acronym||r.title||r.participant_name}</b><span>{r.name||r.start_date||r.edition||r.activity_name||""}</span></div><button onClick={()=>edit(r)} aria-label="Editar">Editar</button><button className="delete-btn" onClick={()=>remove(r.id)} aria-label="Excluir"><Trash2 size={16}/></button></div>)}
+    {tab === "results" && resultsCount > resultsPageSize && <div className="pagination-controls" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,marginTop:16,flexWrap:"wrap"}}>
+      <span>{resultsCount} registro(s) · Página {resultsPage + 1} de {Math.ceil(resultsCount / resultsPageSize)}</span>
+      <div style={{display:"flex",gap:8}}><button type="button" className="secondary-btn" disabled={resultsPage === 0 || resultsLoading} onClick={()=>setResultsPage(p=>Math.max(0,p-1))}>Anterior</button><button type="button" className="secondary-btn" disabled={(resultsPage + 1) * resultsPageSize >= resultsCount || resultsLoading} onClick={()=>setResultsPage(p=>p+1)}>Próxima</button></div>
+    </div>}
+  </div>
   </div>;
 }
 

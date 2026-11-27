@@ -22,6 +22,22 @@ function Hero({ eyebrow, title, subtitle, children }) {
   return <section className="hero"><div className="container hero-inner">{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1>{subtitle && <p>{subtitle}</p>}{children}</div></section>;
 }
 
+async function fetchAllResults() {
+  const pageSize = 1000;
+  const all = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from("results")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) return { data: null, error };
+    all.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return { data: all, error: null };
+}
+
 function useContent() {
   const [olympiads, setOlympiads] = useState(initialOlympiads);
   const [events, setEvents] = useState([]);
@@ -33,11 +49,11 @@ function useContent() {
     if (!supabase) return;
     let alive = true;
     (async () => {
-      const [o, e, r] = await Promise.all([
+      const [o, e] = await Promise.all([
         supabase.from("olympiads").select("*").eq("published", true).order("name"),
-        supabase.from("events").select("*, olympiads(acronym,name)").order("start_date"),
-        supabase.from("results").select("*").order("created_at", { ascending: false })
+        supabase.from("events").select("*, olympiads(acronym,name)").order("start_date")
       ]);
+      const r = await fetchAllResults();
       if (!alive) return;
       if (!o.error && o.data?.length) setOlympiads(o.data);
       if (!e.error && e.data) setEvents(e.data);
@@ -50,11 +66,11 @@ function useContent() {
 
   return { olympiads, setOlympiads, events, setEvents, results, setResults, resultsError, loading, refresh: async () => {
     if (!supabase) return;
-    const [o,e,r] = await Promise.all([
+    const [o,e] = await Promise.all([
       supabase.from("olympiads").select("*").order("name"),
-      supabase.from("events").select("*, olympiads(acronym,name)").order("start_date"),
-      supabase.from("results").select("*").order("created_at", {ascending:false})
+      supabase.from("events").select("*, olympiads(acronym,name)").order("start_date")
     ]);
+    const r = await fetchAllResults();
     if (!o.error) setOlympiads(o.data || []);
     if (!e.error) setEvents(e.data || []);
     if (r.error) setResultsError(r.error.message);

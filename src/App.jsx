@@ -4,6 +4,7 @@ import { Award, CalendarDays, ChevronLeft, ChevronRight, ExternalLink, Graduatio
 import { initialOlympiads, infoPending } from "./data/olympiads";
 import { isSupabaseConfigured, supabase } from "./lib/supabase";
 import CsvResultsImporter from "./components/CsvResultsImporter";
+import ObmepApiImporter from "./components/ObmepApiImporter";
 
 const nav = [["/", "Início"], ["/olimpiadas", "Olimpíadas"], ["/calendario", "Calendário"], ["/resultados", "Resultados"]];
 const fmt = (value) => value ? new Date(`${value}T12:00:00`).toLocaleDateString("pt-BR") : "";
@@ -340,6 +341,7 @@ function AdminEditor({tab,olympiads,events,results,refresh,setMessage}) {
   const textarea=(key,label)=><label>{label}<textarea rows="3" value={form[key]||""} onChange={e=>change(key,e.target.value)}/></label>;
   return <div className="admin-editor">
     {tab==="results"&&<CsvResultsImporter olympiads={olympiads} refresh={refresh}/>}
+    {tab==="results"&&<ObmepApiImporter olympiads={olympiads} refresh={refresh}/>}
     <form className="editor-form" onSubmit={save}><h2>{selected?"Editar registro":"Novo registro"}</h2>
     {tab==="olympiads" ? <>{input("acronym","Sigla","text",true)}{input("name","Nome da olimpíada","text",true)}{textarea("description","Descrição")}{input("audience","Público / nível")}{textarea("stages","Etapas")}{textarea("registration_info","Inscrições")}{textarea("notices","Avisos")}{input("regulation_url","Link do regulamento","url")}<label className="check"><input type="checkbox" checked={form.published??true} onChange={e=>change("published",e.target.checked)}/> Publicada</label></>
     : <><label>Olimpíada<select required value={form.olympiad_id||""} onChange={e=>change("olympiad_id",e.target.value)}><option value="">Selecione</option>{olympiads.map(o=><option value={o.id} key={o.id}>{o.acronym} — {o.name}</option>)}</select></label>{tab==="events"?<>{input("title","Título do evento","text",true)}{input("start_date","Data inicial","date",true)}{input("end_date","Data final","date")}{input("stage","Etapa")}{textarea("description","Informações")}</>:<>{input("participant_name","Nome do participante","text",true)}{input("school_name","Escola")}{input("municipality","Município")}{input("edition","Edição")}{input("award","Premiação / classificação")}{input("score","Nota / pontuação","number")}{input("level","Nível")}{input("activity_name","Nome da atividade") }<label>Tipo de resultado<select value={form.result_type||"official"} onChange={e=>change("result_type",e.target.value)}><option value="official">Olimpíada oficial</option><option value="simulado">Simulado / atividade</option></select></label></>}</>}

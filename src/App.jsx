@@ -41,8 +41,8 @@ function useContent() {
       if (!alive) return;
       if (!o.error && o.data?.length) setOlympiads(o.data);
       if (!e.error && e.data) setEvents(e.data);
-      if (!r.error && r.data) { setResults(r.data); setResultsError(""); }
-      else if (r.error) { console.error("Erro ao carregar resultados:", r.error); setResultsError(r.error.message || "Falha ao consultar a tabela de resultados."); }
+      if (r.error) setResultsError(r.error.message);
+      else { setResults(r.data || []); setResultsError(""); }
       setLoading(false);
     })();
     return () => { alive = false; };
@@ -57,8 +57,8 @@ function useContent() {
     ]);
     if (!o.error) setOlympiads(o.data || []);
     if (!e.error) setEvents(e.data || []);
-    if (!r.error) { setResults(r.data || []); setResultsError(""); }
-    else { console.error("Erro ao atualizar resultados:", r.error); setResultsError(r.error.message || "Falha ao consultar a tabela de resultados."); }
+    if (r.error) setResultsError(r.error.message);
+    else { setResults(r.data || []); setResultsError(""); }
   }};
 }
 
@@ -189,7 +189,7 @@ function CalendarPage({ olympiads, events }) {
   </>;
 }
 
-function ResultsPage({ results, olympiads, resultsError }) {
+function ResultsPage({ results, olympiads, resultsError, loading }) {
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
   const [kind, setKind] = useState("all");
@@ -237,37 +237,35 @@ function ResultsPage({ results, olympiads, resultsError }) {
         <button className={kind === "simulado" ? "active" : ""} onClick={() => setKind("simulado")}>Simulados e atividades</button>
       </div>
       <div className="result-filters">
-        <div className="municipality-filter-control" style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
-          <label htmlFor="results-municipality" style={{ fontSize: 12, fontWeight: 700, color: "#526174" }}>Município</label>
-          <div style={{ position: "relative" }}>
-            <select
-              id="results-municipality"
-              value={municipality}
-              onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}
-              style={{
-                width: "100%",
-                border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)",
-                background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)",
-                color: municipality === "Pires Ferreira" ? "#126b43" : "inherit",
-                fontWeight: municipality === "Pires Ferreira" ? 700 : 500,
-                borderRadius: 10,
-                padding: "11px 38px 11px 12px",
-                outline: "none",
-                boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none"
-              }}
-            >
-              <option value="Pires Ferreira">★ Pires Ferreira</option>
-              <option value="all">Todos os municípios</option>
-              {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
+        <div className="municipality-filter-control" style={{ display: "flex", alignItems: "center", minWidth: 190, alignSelf: "flex-start" }}>
+          <select
+            id="results-municipality"
+            aria-label="Selecionar município"
+            value={municipality}
+            onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}
+            style={{
+              width: "100%",
+              border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)",
+              background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)",
+              color: municipality === "Pires Ferreira" ? "#126b43" : "inherit",
+              fontWeight: municipality === "Pires Ferreira" ? 700 : 500,
+              borderRadius: 10,
+              padding: "11px 38px 11px 12px",
+              outline: "none",
+              boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none"
+            }}
+          >
+            <option value="Pires Ferreira">★ Pires Ferreira</option>
+            <option value="all">Todos os municípios</option>
+            {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
         </div>
         <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
         <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
         <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>
         <div className="searchbox"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
-      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>{resultsError ? "Não foi possível carregar os resultados" : "Nenhum resultado encontrado"}</b><span>{resultsError || "Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo."}</span></div>}
+      {loading ? <div className="empty-state"><b>Carregando resultados...</b></div> : resultsError ? <div className="empty-state"><b>Não foi possível carregar os resultados</b><span>{resultsError}</span></div> : filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo.</span></div>}
     </main>
   </>;
 }
@@ -407,7 +405,7 @@ export default function App() {
     <Route path="/olimpiadas" element={<Olympiads olympiads={data.olympiads}/>}/>
     <Route path="/olimpiadas/:acronym" element={<Detail olympiads={data.olympiads} events={data.events}/>}/>
     <Route path="/calendario" element={<CalendarPage olympiads={data.olympiads} events={data.events}/>}/>
-    <Route path="/resultados" element={<ResultsPage results={data.results} olympiads={data.olympiads} resultsError={data.resultsError}/>}/>
+    <Route path="/resultados" element={<ResultsPage results={data.results} olympiads={data.olympiads} resultsError={data.resultsError} loading={data.loading}/>}/>
     <Route path="/admin" element={<Admin data={data}/>}/>
     <Route path="*" element={<main className="container page-content"><h2>Página não encontrada</h2><Link to="/">Voltar ao início</Link></main>}/>
   </Routes><footer><div className="container footer-inner"><span>© {new Date().getFullYear()} Pires Ferreira Olímpico</span><Link to="/admin">Administração</Link></div></footer></>;

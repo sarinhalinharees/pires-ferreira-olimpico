@@ -182,11 +182,11 @@ function CalendarPage({ olympiads, events }) {
 }
 
 function getAwardTone(award) {
-  const value = String(award || "").normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase();
+  const value = String(award || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   if (value.includes("ouro")) return "award-gold";
   if (value.includes("prata")) return "award-silver";
   if (value.includes("bronze")) return "award-bronze";
-  if (value.includes("menção") || value.includes("mencao")) return "award-honorable";
+  if (value.includes("mencao")) return "award-honorable";
   return "award-default";
 }
 
@@ -268,8 +268,8 @@ function ResultsPage({ olympiads }) {
         <button className={kind === "simulado" ? "active" : ""} onClick={() => { setKind("simulado"); setPage(0); }}>Simulados e atividades</button>
       </div>
       <div className="result-filters">
-        <div className="municipality-filter-control" style={{ display: "flex", alignItems: "center", minWidth: 190, alignSelf: "flex-start" }}>
-          <select id="results-municipality" aria-label="Selecionar município" value={municipality} onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); setPage(0); }} style={{ width: "100%", border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)", background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)", color: municipality === "Pires Ferreira" ? "#126b43" : "inherit", fontWeight: municipality === "Pires Ferreira" ? 700 : 500, borderRadius: 10, padding: "11px 38px 11px 12px", outline: "none", boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none" }}>
+        <div className="municipality-filter-control" style={{ display: "flex", alignItems: "center", minWidth: 220, alignSelf: "stretch" }}>
+          <select id="results-municipality" className="municipality-select" aria-label="Selecionar município" value={municipality} onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); setPage(0); }} style={{ width: "100%", border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)", background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)", color: municipality === "Pires Ferreira" ? "#126b43" : "inherit", fontWeight: municipality === "Pires Ferreira" ? 700 : 500, borderRadius: 10, padding: "11px 38px 11px 12px", outline: "none", boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none" }}>
             <option value="Pires Ferreira">★ Pires Ferreira</option>
             <option value="all">Todos os municípios</option>
           </select>
@@ -280,16 +280,7 @@ function ResultsPage({ olympiads }) {
         <div className="searchbox"><Search size={18}/><input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
       {loading ? <div className="empty-state"><b>Carregando resultados...</b></div> : error ? <div className="empty-state"><b>Não foi possível carregar os resultados</b><span>{error}</span></div> : rows.length ? <>
-        <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || infoPending}</td><td>{r.activity_name || olympiads.find(o => o.id === r.olympiad_id)?.acronym || infoPending}</td><td>{r.edition || "—"}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td><span className={`award-badge ${getAwardTone(r.award)}`} style={{
-              display: "inline-flex", alignItems: "center", padding: "4px 10px",
-              borderRadius: 999, fontWeight: 700, fontSize: 12, lineHeight: 1.4,
-              whiteSpace: "normal",
-              ...(getAwardTone(r.award) === "award-gold" ? { color: "#8A5A00", background: "#FFF1C2", border: "1px solid #E7C35B" } :
-                getAwardTone(r.award) === "award-silver" ? { color: "#596579", background: "#EEF1F5", border: "1px solid #C6CDD6" } :
-                getAwardTone(r.award) === "award-bronze" ? { color: "#8B4E2D", background: "#F8E5D8", border: "1px solid #D8A17E" } :
-                getAwardTone(r.award) === "award-honorable" ? { color: "#315D83", background: "#EAF2FA", border: "1px solid #B8D0E6" } :
-                { color: "#334155", background: "#F1F5F9", border: "1px solid #D8E0E8" })
-            }}>{r.award || infoPending}</span></td></tr>)}</tbody></table></div>
+        <div className="table-wrap"><table className="public-results-table"><colgroup><col className="col-participant"/><col className="col-school"/><col className="col-olympiad"/><col className="col-edition"/><col className="col-score"/><col className="col-level"/><col className="col-award"/></colgroup><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || infoPending}</td><td>{r.activity_name || olympiads.find(o => o.id === r.olympiad_id)?.acronym || infoPending}</td><td>{r.edition || "—"}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td><span className={`award-badge ${getAwardTone(r.award)}`}>{r.award || infoPending}</span></td></tr>)}</tbody></table></div>
         <div className="pagination-controls" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16 }}>
           <span>{total} resultado(s) · Página {page + 1} de {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
           <div style={{ display: "flex", gap: 8 }}><button className="secondary-btn" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</button><button className="secondary-btn" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>Próxima</button></div>

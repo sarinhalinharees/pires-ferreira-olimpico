@@ -234,11 +234,39 @@ function ResultsPage({ results, olympiads }) {
         <button className={kind === "simulado" ? "active" : ""} onClick={() => setKind("simulado")}>Simulados e atividades</button>
       </div>
       <div className="result-filters">
-        <select value={municipality} onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}>
-          <option value="Pires Ferreira">Pires Ferreira</option>
-          <option value="all">Todos os municípios</option>
-          {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <div className="municipality-filter-control" style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 190 }}>
+          <label htmlFor="results-municipality" style={{ fontSize: 12, fontWeight: 700, color: "#526174" }}>Município</label>
+          <div style={{ position: "relative" }}>
+            <select
+              id="results-municipality"
+              value={municipality}
+              onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}
+              style={{
+                width: "100%",
+                border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)",
+                background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)",
+                color: municipality === "Pires Ferreira" ? "#126b43" : "inherit",
+                fontWeight: municipality === "Pires Ferreira" ? 700 : 500,
+                borderRadius: 10,
+                padding: "11px 38px 11px 12px",
+                outline: "none",
+                boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none"
+              }}
+            >
+              <option value="Pires Ferreira">★ Pires Ferreira</option>
+              <option value="all">Todos os municípios</option>
+              {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <span style={{
+            display: "inline-flex", alignItems: "center", gap: 5, width: "fit-content",
+            padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700,
+            color: municipality === "Pires Ferreira" ? "#126b43" : "#526174",
+            background: municipality === "Pires Ferreira" ? "#e1f5e9" : "#eef1f5"
+          }}>
+            {municipality === "Pires Ferreira" ? "✓ Município local selecionado" : "Visualização: " + (municipality === "all" ? "todos os municípios" : municipality)}
+          </span>
+        </div>
         <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
         <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
         <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>

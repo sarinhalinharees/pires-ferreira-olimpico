@@ -190,29 +190,55 @@ function ResultsPage({ results, olympiads }) {
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
   const [kind, setKind] = useState("all");
+  const [municipality, setMunicipality] = useState("Pires Ferreira");
   const [school, setSchool] = useState("all");
   const [query, setQuery] = useState("");
-  const editions = [...new Set(results.map(r => r.edition).filter(Boolean))].sort().reverse();
-  const schools = [...new Set(results.map(r => (r.school_name || r.schools?.name || "").trim()).filter(Boolean))]
+
+  const municipalityOf = (r) => (r.municipality || r.schools?.municipality || "").trim();
+  const municipalities = [...new Set(results.map(municipalityOf).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
-  const filtered = results.filter(r =>
+  const editions = [...new Set(results
+    .filter(r => municipality === "all" || !municipalityOf(r) || municipalityOf(r).toLocaleLowerCase("pt-BR") === municipality.toLocaleLowerCase("pt-BR"))
+    .map(r => r.edition).filter(Boolean))].sort().reverse();
+
+  const municipalityResults = results.filter(r => {
+    const city = municipalityOf(r);
+    if (municipality === "all") return true;
+    // Mantém registros antigos sem município junto aos resultados locais, como antes.
+    return !city || city.toLocaleLowerCase("pt-BR") === municipality.toLocaleLowerCase("pt-BR");
+  });
+
+  const schools = [...new Set(municipalityResults
+    .map(r => (r.school_name || r.schools?.name || "").trim())
+    .filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+
+  const filtered = municipalityResults.filter(r =>
     (olympiad === "all" || r.olympiad_id === olympiad) &&
     (edition === "all" || r.edition === edition) &&
     (school === "all" || (r.school_name || r.schools?.name || "").trim() === school) &&
     (kind === "all" || (r.result_type || "official") === kind) &&
-    `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""} ${r.level || ""}`.toLowerCase().includes(query.toLowerCase()) &&
-    (!r.municipality && !r.schools?.municipality || (r.municipality || r.schools?.municipality).toLowerCase().includes("pires ferreira"))
+    `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""} ${r.level || ""}`.toLowerCase().includes(query.toLowerCase())
   );
+
   return <>
     <Hero title="Resultados" subtitle="Consulte as premiações oficiais e as atividades de preparação dos estudantes."/>
     <main className="container page-content">
-      <div className="notice-bar"><b>Somente estudantes de Pires Ferreira</b><span>Resultados de outros municípios não são exibidos.</span></div>
+      <div className="notice-bar">
+        <b>{municipality === "all" ? "Resultados de todos os municípios" : `Resultados de ${municipality}`}</b>
+        <span>{municipality === "all" ? "A lista inclui todos os municípios disponíveis na base." : "A lista e o filtro de escolas mostram somente os registros deste município."}</span>
+      </div>
       <div className="result-kind-tabs">
         <button className={kind === "all" ? "active" : ""} onClick={() => setKind("all")}>Todos</button>
         <button className={kind === "official" ? "active" : ""} onClick={() => setKind("official")}>Olimpíadas oficiais</button>
         <button className={kind === "simulado" ? "active" : ""} onClick={() => setKind("simulado")}>Simulados e atividades</button>
       </div>
       <div className="result-filters">
+        <select value={municipality} onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}>
+          <option value="Pires Ferreira">Pires Ferreira</option>
+          <option value="all">Todos os municípios</option>
+          {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
         <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
         <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
         <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>

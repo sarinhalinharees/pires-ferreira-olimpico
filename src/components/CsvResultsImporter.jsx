@@ -87,7 +87,10 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
     const isSimulado = norm(source).includes("simulado");
     const participantName = pick(row, ["aluno", "nome", "nome do aluno", "participante"]);
     const schoolName = pick(row, ["escola", "nome da escola", "instituicao"]);
-    const municipality = pick(row, ["municipio", "cidade"]) || "Pires Ferreira";
+    const municipalityFromFile = pick(row, ["municipio", "cidade"]);
+    // Só aplica o município padrão ao formato antigo, que não traz essa coluna.
+    // No relatório OBMEP, município ausente deve ser tratado como dado incompleto.
+    const municipality = municipalityFromFile || (format === "obmep" ? "" : "Pires Ferreira");
     const explicitAward = pick(row, ["classificacao", "premiacao", "premiação", "mencao", "distincao", "resultado"]);
     const explicitLevel = pick(row, ["nivel", "nivel de ensino"]);
     const scoreText = pick(row, ["nota", "pontuacao", "pontos"]).replace(",", ".");
@@ -132,7 +135,16 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
     setError(""); setNotice(""); setSummary(null); setRows([]); setFileName("");
     if (!file) return;
     try {
-      const parsed = parseCsvText(await file.text());
+      // Os relatórios da OBMEP podem vir em Windows-1252/ANSI, não em UTF-8.
+      // Primeiro tentamos UTF-8 estrito; se falhar, usamos Windows-1252.
+      const bytes = await file.arrayBuffer();
+      let decoded;
+      try {
+        decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+      } catch {
+        decoded = new TextDecoder("windows-1252").decode(bytes);
+      }
+      const parsed = parseCsvText(decoded);
       const isObmep = parsed.some((row) =>
         Object.keys(row).some((key) => ["municipio", "uf", "mencao", "premiacao"].includes(norm(key)))
       );

@@ -26,6 +26,7 @@ function useContent() {
   const [olympiads, setOlympiads] = useState(initialOlympiads);
   const [events, setEvents] = useState([]);
   const [results, setResults] = useState([]);
+  const [resultsError, setResultsError] = useState("");
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
   useEffect(() => {
@@ -35,27 +36,29 @@ function useContent() {
       const [o, e, r] = await Promise.all([
         supabase.from("olympiads").select("*").eq("published", true).order("name"),
         supabase.from("events").select("*, olympiads(acronym,name)").order("start_date"),
-        supabase.from("results").select("*, olympiads(acronym,name), schools(name,municipality)").order("created_at", { ascending: false })
+        supabase.from("results").select("*").order("created_at", { ascending: false })
       ]);
       if (!alive) return;
       if (!o.error && o.data?.length) setOlympiads(o.data);
       if (!e.error && e.data) setEvents(e.data);
-      if (!r.error && r.data) setResults(r.data);
+      if (!r.error && r.data) { setResults(r.data); setResultsError(""); }
+      else if (r.error) { console.error("Erro ao carregar resultados:", r.error); setResultsError(r.error.message || "Falha ao consultar a tabela de resultados."); }
       setLoading(false);
     })();
     return () => { alive = false; };
   }, []);
 
-  return { olympiads, setOlympiads, events, setEvents, results, setResults, loading, refresh: async () => {
+  return { olympiads, setOlympiads, events, setEvents, results, setResults, resultsError, loading, refresh: async () => {
     if (!supabase) return;
     const [o,e,r] = await Promise.all([
       supabase.from("olympiads").select("*").order("name"),
       supabase.from("events").select("*, olympiads(acronym,name)").order("start_date"),
-      supabase.from("results").select("*, olympiads(acronym,name), schools(name,municipality)").order("created_at", {ascending:false})
+      supabase.from("results").select("*").order("created_at", {ascending:false})
     ]);
     if (!o.error) setOlympiads(o.data || []);
     if (!e.error) setEvents(e.data || []);
-    if (!r.error) setResults(r.data || []);
+    if (!r.error) { setResults(r.data || []); setResultsError(""); }
+    else { console.error("Erro ao atualizar resultados:", r.error); setResultsError(r.error.message || "Falha ao consultar a tabela de resultados."); }
   }};
 }
 
@@ -186,7 +189,7 @@ function CalendarPage({ olympiads, events }) {
   </>;
 }
 
-function ResultsPage({ results, olympiads }) {
+function ResultsPage({ results, olympiads, resultsError }) {
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
   const [kind, setKind] = useState("all");
@@ -258,21 +261,13 @@ function ResultsPage({ results, olympiads }) {
               {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
             </select>
           </div>
-          <span style={{
-            display: "inline-flex", alignItems: "center", gap: 5, width: "fit-content",
-            padding: "3px 8px", borderRadius: 999, fontSize: 11, fontWeight: 700,
-            color: municipality === "Pires Ferreira" ? "#126b43" : "#526174",
-            background: municipality === "Pires Ferreira" ? "#e1f5e9" : "#eef1f5"
-          }}>
-            {municipality === "Pires Ferreira" ? "✓ Município local selecionado" : "Visualização: " + (municipality === "all" ? "todos os municípios" : municipality)}
-          </span>
         </div>
         <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
         <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
         <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>
         <div className="searchbox"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
-      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo.</span></div>}
+      {filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>{resultsError ? "Não foi possível carregar os resultados" : "Nenhum resultado encontrado"}</b><span>{resultsError || "Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo."}</span></div>}
     </main>
   </>;
 }
@@ -412,7 +407,7 @@ export default function App() {
     <Route path="/olimpiadas" element={<Olympiads olympiads={data.olympiads}/>}/>
     <Route path="/olimpiadas/:acronym" element={<Detail olympiads={data.olympiads} events={data.events}/>}/>
     <Route path="/calendario" element={<CalendarPage olympiads={data.olympiads} events={data.events}/>}/>
-    <Route path="/resultados" element={<ResultsPage results={data.results} olympiads={data.olympiads}/>}/>
+    <Route path="/resultados" element={<ResultsPage results={data.results} olympiads={data.olympiads} resultsError={data.resultsError}/>}/>
     <Route path="/admin" element={<Admin data={data}/>}/>
     <Route path="*" element={<main className="container page-content"><h2>Página não encontrada</h2><Link to="/">Voltar ao início</Link></main>}/>
   </Routes><footer><div className="container footer-inner"><span>© {new Date().getFullYear()} Pires Ferreira Olímpico</span><Link to="/admin">Administração</Link></div></footer></>;

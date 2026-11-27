@@ -83,6 +83,7 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
   const [format, setFormat] = useState("standard");
   const [municipalityFilter, setMunicipalityFilter] = useState("all");
 
+  const selectedOlympiad = olympiads.find((o) => o.id === olympiadId);
   const preview = useMemo(() => rows.map((row) => {
     const source = pick(row, ["olimpiada", "atividade", "competicao"]);
     const isSimulado = norm(source).includes("simulado");
@@ -111,11 +112,15 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
       score,
       level,
       result_type: isSimulado ? "simulado" : "official",
-      activity_name: isSimulado ? "Simulado Contínuo – OBLI" : (format === "obmep" ? "OBMEP" : (source || "Olimpíada oficial"))
+      activity_name: isSimulado
+        ? "Simulado Contínuo – OBLI"
+        : (format === "obmep"
+          ? "OBMEP"
+          : (source || selectedOlympiad?.acronym || selectedOlympiad?.name || "Olimpíada oficial"))
     };
     result.import_key = makeImportKey(result, olympiadId, edition, result.result_type);
     return result;
-  }), [rows, edition, olympiadId, format, officialAward, officialLevel]);
+  }), [rows, edition, olympiadId, format, officialAward, officialLevel, selectedOlympiad]);
 
   const selectedRows = municipalityFilter === "pires"
     ? preview.filter((r) => norm(r.municipality) === "pires ferreira")

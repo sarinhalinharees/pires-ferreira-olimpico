@@ -95,7 +95,10 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
     const explicitLevel = pick(row, ["nivel", "nivel de ensino"]);
     const scoreText = pick(row, ["nota", "pontuacao", "pontos"]).replace(",", ".");
     const score = scoreText ? Number(scoreText) : null;
-    const award = explicitAward || (format === "obmep" ? officialAward : "");
+    // Nos relatórios oficiais da OBMEP, a coluna "Menção" contém "Sim/Não"
+    // (indica se recebeu a menção), não o nome da premiação.
+    // O tipo da premiação vem do relatório selecionado pelo administrador.
+    const award = format === "obmep" ? officialAward : explicitAward;
     const level = explicitLevel || (format === "obmep" ? officialLevel : "");
     const result = {
       raw: row,

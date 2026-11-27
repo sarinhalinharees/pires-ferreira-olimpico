@@ -42,8 +42,8 @@ function parseCsvText(text) {
   const matrix = parseCsvMatrix(text);
   const headerIndex = matrix.findIndex((cells) => {
     const headers = cells.map(norm);
-    const hasName = headers.some((h) => ["aluno", "nome", "nome do aluno", "participante"].includes(h));
-    const hasSchool = headers.some((h) => ["escola", "nome da escola", "instituicao"].includes(h));
+    const hasName = headers.some((h) => ["aluno", "aluno(a)", "nome", "nome do aluno", "nome do estudante", "nome completo", "estudante", "participante"].includes(h));
+    const hasSchool = headers.some((h) => ["escola", "nome da escola", "instituicao", "instituicao de ensino", "unidade escolar"].includes(h));
     return hasName && hasSchool;
   });
   if (headerIndex < 0) {
@@ -86,14 +86,14 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
   const preview = useMemo(() => rows.map((row) => {
     const source = pick(row, ["olimpiada", "atividade", "competicao"]);
     const isSimulado = norm(source).includes("simulado");
-    const participantName = pick(row, ["aluno", "nome", "nome do aluno", "participante"]);
-    const schoolName = pick(row, ["escola", "nome da escola", "instituicao"]);
-    const municipalityFromFile = pick(row, ["municipio", "cidade"]);
+    const participantName = pick(row, ["aluno", "aluno(a)", "nome", "nome do aluno", "nome do estudante", "nome completo", "estudante", "participante"]);
+    const schoolName = pick(row, ["escola", "nome da escola", "instituicao", "instituicao de ensino", "unidade escolar"]);
+    const municipalityFromFile = pick(row, ["municipio", "municipio de origem", "cidade", "localidade"]);
     // Só aplica o município padrão ao formato antigo, que não traz essa coluna.
     // No relatório OBMEP, município ausente deve ser tratado como dado incompleto.
     const municipality = municipalityFromFile || (format === "obmep" ? "" : "Pires Ferreira");
-    const explicitAward = pick(row, ["classificacao", "premiacao", "premiação", "mencao", "distincao", "resultado"]);
-    const explicitLevel = pick(row, ["nivel", "nivel de ensino"]);
+    const explicitAward = pick(row, ["classificacao", "classificacao final", "premiacao", "mencao", "distincao", "resultado", "resultado final", "medalha", "premio", "categoria"]);
+    const explicitLevel = pick(row, ["nivel", "nivel de ensino", "nivel da olimpíada"]);
     const scoreText = pick(row, ["nota", "pontuacao", "pontos"]).replace(",", ".");
     const score = scoreText ? Number(scoreText) : null;
     // Nos relatórios oficiais da OBMEP, a coluna "Menção" contém "Sim/Não"
@@ -152,9 +152,13 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
         decoded = new TextDecoder("windows-1252").decode(bytes);
       }
       const parsed = parseCsvText(decoded);
-      const isObmep = parsed.some((row) =>
-        Object.keys(row).some((key) => ["municipio", "uf", "mencao", "premiacao"].includes(norm(key)))
-      );
+      // Só trata como relatório OBMEP quando encontra a combinação característica
+      // de UF + Menção. Uma tabela de outra olimpíada com Município e Premiação
+      // deve seguir o formato universal, sem receber Menção Honrosa por engano.
+      const isObmep = parsed.some((row) => {
+        const headers = Object.keys(row).map(norm);
+        return headers.includes("uf") && headers.includes("mencao");
+      });
       setFormat(isObmep ? "obmep" : "standard");
       setRows(parsed);
       setFileName(file.name);
@@ -163,8 +167,10 @@ export default function CsvResultsImporter({ olympiads, refresh }) {
         if (obmep) setOlympiadId(obmep.id);
         const yearFromFile = `${file.name} ${parsed.map((r) => Object.values(r).join(" ")).join(" ")}`.match(/20\d{2}/)?.[0];
         if (yearFromFile) setEdition(yearFromFile);
-        setNotice("Relatório oficial identificado. Confira a edição, o nível e a premiação antes de importar. Os municípios serão preservados conforme o arquivo.");
+        setNotice("Relatório oficial da OBMEP identificado. Confira a edição, o nível e a premiação antes de importar. Os municípios serão preservados conforme o arquivo.");
       } else {
+        const hasAwardColumn = parsed.some((row) => !!pick(row, ["classificacao", "classificacao final", "premiacao", "mencao", "distincao", "resultado", "resultado final", "medalha", "premio", "categoria"]));
+        if (hasAwardColumn) setNotice("Formato de resultados reconhecido. Nome, escola, município e premiação serão convertidos automaticamente; colunas adicionais serão ignoradas.");
         const foundEdition = parsed.map((r) => pick(r, ["olimpiada", "atividade"])?.match(/20\d{2}(?:\.\d+)?/)?.[0]).find(Boolean);
         if (foundEdition) setEdition(foundEdition);
         if (parsed.some((r) => norm(pick(r, ["olimpiada", "atividade"])).includes("simulado"))) {

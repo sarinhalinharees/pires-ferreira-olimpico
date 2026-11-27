@@ -41,8 +41,6 @@ async function fetchAllResults() {
 function useContent() {
   const [olympiads, setOlympiads] = useState(initialOlympiads);
   const [events, setEvents] = useState([]);
-  const [results, setResults] = useState([]);
-  const [resultsError, setResultsError] = useState("");
   const [loading, setLoading] = useState(isSupabaseConfigured);
 
   useEffect(() => {
@@ -53,28 +51,22 @@ function useContent() {
         supabase.from("olympiads").select("*").eq("published", true).order("name"),
         supabase.from("events").select("*, olympiads(acronym,name)").order("start_date")
       ]);
-      const r = await fetchAllResults();
       if (!alive) return;
       if (!o.error && o.data?.length) setOlympiads(o.data);
       if (!e.error && e.data) setEvents(e.data);
-      if (r.error) setResultsError(r.error.message);
-      else { setResults(r.data || []); setResultsError(""); }
       setLoading(false);
     })();
     return () => { alive = false; };
   }, []);
 
-  return { olympiads, setOlympiads, events, setEvents, results, setResults, resultsError, loading, refresh: async () => {
+  return { olympiads, setOlympiads, events, setEvents, loading, refresh: async () => {
     if (!supabase) return;
     const [o,e] = await Promise.all([
       supabase.from("olympiads").select("*").order("name"),
       supabase.from("events").select("*, olympiads(acronym,name)").order("start_date")
     ]);
-    const r = await fetchAllResults();
     if (!o.error) setOlympiads(o.data || []);
     if (!e.error) setEvents(e.data || []);
-    if (r.error) setResultsError(r.error.message);
-    else { setResults(r.data || []); setResultsError(""); }
   }};
 }
 
@@ -205,89 +197,115 @@ function CalendarPage({ olympiads, events }) {
   </>;
 }
 
-function ResultsPage({ results, olympiads, resultsError, loading }) {
+function ResultsPage({ olympiads }) {
+  const PAGE_SIZE = 50;
   const [olympiad, setOlympiad] = useState("all");
   const [edition, setEdition] = useState("all");
   const [kind, setKind] = useState("all");
   const [municipality, setMunicipality] = useState("Pires Ferreira");
   const [school, setSchool] = useState("all");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+  const [rows, setRows] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [editions, setEditions] = useState([]);
+  const [schools, setSchools] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const municipalityOf = (r) => (r.municipality || r.schools?.municipality || "").trim();
-  const municipalities = [...new Set(results.map(municipalityOf).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
-  const editions = [...new Set(results
-    .filter(r => municipality === "all" || !municipalityOf(r) || municipalityOf(r).toLocaleLowerCase("pt-BR") === municipality.toLocaleLowerCase("pt-BR"))
-    .map(r => r.edition).filter(Boolean))].sort().reverse();
+  useEffect(() => {
+    if (!supabase) { setLoading(false); setError("Banco de dados não configurado."); return; }
+    let active = true;
+    (async () => {
+      const pageSize = 1000;
+      const allOptions = [];
+      for (let from = 0; ; from += pageSize) {
+        let optionsQuery = supabase.from("results").select("edition, school_name, municipality").order("created_at", { ascending: false }).range(from, from + pageSize - 1);
+        if (municipality !== "all") optionsQuery = optionsQuery.ilike("municipality", municipality);
+        const { data, error: optionsError } = await optionsQuery;
+        if (optionsError) { if (active) setError(optionsError.message); return; }
+        allOptions.push(...(data || []));
+        if (!data || data.length < pageSize) break;
+      }
+      if (!active) return;
+      setEditions([...new Set(allOptions.map(r => r.edition).filter(Boolean))].sort((a,b) => String(b).localeCompare(String(a), "pt-BR", { numeric: true })));
+      setSchools([...new Set(allOptions.map(r => (r.school_name || "").trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" })));
+    })();
+    return () => { active = false; };
+  }, [municipality]);
 
-  const municipalityResults = results.filter(r => {
-    const city = municipalityOf(r);
-    if (municipality === "all") return true;
-    // Mantém registros antigos sem município junto aos resultados locais, como antes.
-    return !city || city.toLocaleLowerCase("pt-BR") === municipality.toLocaleLowerCase("pt-BR");
-  });
+  useEffect(() => {
+    if (!supabase) return;
+    let active = true;
+    setLoading(true); setError("");
+    (async () => {
+      let request = supabase.from("results").select("*", { count: "exact" }).order("created_at", { ascending: false });
+      if (municipality !== "all") request = request.ilike("municipality", municipality);
+      if (olympiad !== "all") request = request.eq("olympiad_id", olympiad);
+      if (edition !== "all") request = request.eq("edition", edition);
+      if (school !== "all") request = request.eq("school_name", school);
+      if (kind === "official") request = request.or("result_type.eq.official,result_type.is.null");
+      else if (kind === "simulado") request = request.eq("result_type", "simulado");
+      const term = query.trim();
+      if (term) {
+        const safeTerm = term.replace(/[,%()]/g, " ").trim();
+        if (safeTerm) request = request.or(`participant_name.ilike.%${safeTerm}%,school_name.ilike.%${safeTerm}%,award.ilike.%${safeTerm}%,level.ilike.%${safeTerm}%`);
+      }
+      const { data, count, error: queryError } = await request.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (!active) return;
+      if (queryError) setError(queryError.message);
+      else { setRows(data || []); setTotal(count || 0); }
+      setLoading(false);
+    })();
+    return () => { active = false; };
+  }, [municipality, olympiad, edition, school, kind, query, page]);
 
-  const schools = [...new Set(municipalityResults
-    .map(r => (r.school_name || r.schools?.name || "").trim())
-    .filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
-
-  const filtered = municipalityResults.filter(r =>
-    (olympiad === "all" || r.olympiad_id === olympiad) &&
-    (edition === "all" || r.edition === edition) &&
-    (school === "all" || (r.school_name || r.schools?.name || "").trim() === school) &&
-    (kind === "all" || (r.result_type || "official") === kind) &&
-    `${r.participant_name} ${r.school_name || r.schools?.name || ""} ${r.award || ""} ${r.level || ""}`.toLowerCase().includes(query.toLowerCase())
-  );
+  const resetPage = (setter) => value => { setter(value); setPage(0); };
 
   return <>
     <Hero title="Resultados" subtitle="Consulte as premiações oficiais e as atividades de preparação dos estudantes."/>
     <main className="container page-content">
       <div className="notice-bar">
         <b>{municipality === "all" ? "Resultados de todos os municípios" : `Resultados de ${municipality}`}</b>
-        <span>{municipality === "all" ? "A lista inclui todos os municípios disponíveis na base." : "A lista e o filtro de escolas mostram somente os registros deste município."}</span>
+        <span>{municipality === "all" ? "A lista inclui os municípios permitidos para consulta pública." : "A lista e o filtro de escolas mostram somente os registros deste município."}</span>
       </div>
       <div className="result-kind-tabs">
-        <button className={kind === "all" ? "active" : ""} onClick={() => setKind("all")}>Todos</button>
-        <button className={kind === "official" ? "active" : ""} onClick={() => setKind("official")}>Olimpíadas oficiais</button>
-        <button className={kind === "simulado" ? "active" : ""} onClick={() => setKind("simulado")}>Simulados e atividades</button>
+        <button className={kind === "all" ? "active" : ""} onClick={() => { setKind("all"); setPage(0); }}>Todos</button>
+        <button className={kind === "official" ? "active" : ""} onClick={() => { setKind("official"); setPage(0); }}>Olimpíadas oficiais</button>
+        <button className={kind === "simulado" ? "active" : ""} onClick={() => { setKind("simulado"); setPage(0); }}>Simulados e atividades</button>
       </div>
       <div className="result-filters">
         <div className="municipality-filter-control" style={{ display: "flex", alignItems: "center", minWidth: 190, alignSelf: "flex-start" }}>
-          <select
-            id="results-municipality"
-            aria-label="Selecionar município"
-            value={municipality}
-            onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); }}
-            style={{
-              width: "100%",
-              border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)",
-              background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)",
-              color: municipality === "Pires Ferreira" ? "#126b43" : "inherit",
-              fontWeight: municipality === "Pires Ferreira" ? 700 : 500,
-              borderRadius: 10,
-              padding: "11px 38px 11px 12px",
-              outline: "none",
-              boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none"
-            }}
-          >
+          <select id="results-municipality" aria-label="Selecionar município" value={municipality} onChange={e => { setMunicipality(e.target.value); setSchool("all"); setEdition("all"); setPage(0); }} style={{ width: "100%", border: municipality === "Pires Ferreira" ? "2px solid #168653" : "1px solid var(--border, #d7dee7)", background: municipality === "Pires Ferreira" ? "#effaf4" : "var(--surface, #fff)", color: municipality === "Pires Ferreira" ? "#126b43" : "inherit", fontWeight: municipality === "Pires Ferreira" ? 700 : 500, borderRadius: 10, padding: "11px 38px 11px 12px", outline: "none", boxShadow: municipality === "Pires Ferreira" ? "0 0 0 3px rgba(22,134,83,.10)" : "none" }}>
             <option value="Pires Ferreira">★ Pires Ferreira</option>
             <option value="all">Todos os municípios</option>
-            {municipalities.filter(m => m.toLocaleLowerCase("pt-BR") !== "pires ferreira").map(m => <option key={m} value={m}>{m}</option>)}
           </select>
         </div>
-        <select value={olympiad} onChange={e => setOlympiad(e.target.value)}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
-        <select value={edition} onChange={e => setEdition(e.target.value)}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
-        <select value={school} onChange={e => setSchool(e.target.value)}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>
-        <div className="searchbox"><Search size={18}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar participante, escola ou premiação..."/></div>
+        <select value={olympiad} onChange={e => { setOlympiad(e.target.value); setPage(0); }}><option value="all">Todas as olimpíadas</option>{olympiads.map(o => <option value={o.id} key={o.id}>{o.acronym}</option>)}</select>
+        <select value={edition} onChange={e => { setEdition(e.target.value); setPage(0); }}><option value="all">Todas as edições</option>{editions.map(e => <option key={e}>{e}</option>)}</select>
+        <select value={school} onChange={e => { setSchool(e.target.value); setPage(0); }}><option value="all">Todas as escolas</option>{schools.map(name => <option key={name} value={name}>{name}</option>)}</select>
+        <div className="searchbox"><Search size={18}/><input value={query} onChange={e => { setQuery(e.target.value); setPage(0); }} placeholder="Buscar participante, escola ou premiação..."/></div>
       </div>
-      {loading ? <div className="empty-state"><b>Carregando resultados...</b></div> : resultsError ? <div className="empty-state"><b>Não foi possível carregar os resultados</b><span>{resultsError}</span></div> : filtered.length ? <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{filtered.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || r.schools?.name || infoPending}</td><td>{r.activity_name || r.olympiads?.acronym || olympiads.find(o => o.id === r.olympiad_id)?.acronym}</td><td>{r.edition}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Os resultados aparecerão aqui depois de serem cadastrados ou importados no painel administrativo.</span></div>}
+      {loading ? <div className="empty-state"><b>Carregando resultados...</b></div> : error ? <div className="empty-state"><b>Não foi possível carregar os resultados</b><span>{error}</span></div> : rows.length ? <>
+        <div className="table-wrap"><table><thead><tr><th>Participante</th><th>Escola</th><th>Olimpíada / atividade</th><th>Edição</th><th>Nota</th><th>Nível</th><th>Classificação</th></tr></thead><tbody>{rows.map(r => <tr key={r.id}><td>{r.participant_name}</td><td>{r.school_name || infoPending}</td><td>{r.activity_name || olympiads.find(o => o.id === r.olympiad_id)?.acronym || infoPending}</td><td>{r.edition || "—"}</td><td>{r.score ?? "—"}</td><td>{r.level || "—"}</td><td>{r.award || infoPending}</td></tr>)}</tbody></table></div>
+        <div className="pagination-controls" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 16 }}>
+          <span>{total} resultado(s) · Página {page + 1} de {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
+          <div style={{ display: "flex", gap: 8 }}><button className="secondary-btn" disabled={page === 0} onClick={() => setPage(p => Math.max(0, p - 1))}>Anterior</button><button className="secondary-btn" disabled={(page + 1) * PAGE_SIZE >= total} onClick={() => setPage(p => p + 1)}>Próxima</button></div>
+        </div>
+      </> : <div className="empty-state"><Award size={30}/><b>Nenhum resultado encontrado</b><span>Não há resultados para os filtros selecionados.</span></div>}
     </main>
   </>;
 }
 
 function Admin({ data }) {
-  const { olympiads, events, results, refresh } = data;
+  const { olympiads, events, refresh } = data;
+  const [results, setResults] = useState([]);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const refreshAdmin = async () => {
+    const result = await fetchAllResults();
+    if (!result.error) setResults(result.data || []);
+    return result;
+  };
   const [session, setSession] = useState(null);
   const [authorized, setAuthorized] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -326,6 +344,18 @@ function Admin({ data }) {
     });
     return ()=>{mounted=false;listener.subscription.unsubscribe();};
   },[]);
+
+  useEffect(() => {
+    if (!authorized || !supabase) return;
+    let active = true;
+    setResultsLoading(true);
+    fetchAllResults().then(result => {
+      if (!active) return;
+      if (!result.error) setResults(result.data || []);
+      setResultsLoading(false);
+    });
+    return () => { active = false; };
+  }, [authorized]);
 
   async function login(e){
     e.preventDefault();setError("");setBusy(true);
@@ -373,7 +403,7 @@ function Admin({ data }) {
       </form>}
     </main>
   </>;
-  return <><Hero title="Painel administrativo" subtitle="Gerencie o conteúdo publicado no Pires Ferreira Olímpico."><button className="hero-logout" onClick={logout}><LogOut size={15}/> Sair</button></Hero><main className="container page-content"><div className="admin-tabs"><button className={tab==="olympiads"?"active":""} onClick={()=>setTab("olympiads")}>Olimpíadas</button><button className={tab==="events"?"active":""} onClick={()=>setTab("events")}>Calendário</button><button className={tab==="results"?"active":""} onClick={()=>setTab("results")}>Resultados</button></div><AdminEditor tab={tab} olympiads={olympiads} events={events} results={results} refresh={refresh} setMessage={setMessage}/>{message&&<p className="success">{message}</p>}</main></>;
+  return <><Hero title="Painel administrativo" subtitle="Gerencie o conteúdo publicado no Pires Ferreira Olímpico."><button className="hero-logout" onClick={logout}><LogOut size={15}/> Sair</button></Hero><main className="container page-content"><div className="admin-tabs"><button className={tab==="olympiads"?"active":""} onClick={()=>setTab("olympiads")}>Olimpíadas</button><button className={tab==="events"?"active":""} onClick={()=>setTab("events")}>Calendário</button><button className={tab==="results"?"active":""} onClick={()=>setTab("results")}>Resultados</button></div><AdminEditor tab={tab} olympiads={olympiads} events={events} results={results} refresh={async () => { await refresh(); await refreshAdmin(); }} setMessage={setMessage}/>{message&&<p className="success">{message}</p>}</main></>;
 }
 
 function AdminEditor({tab,olympiads,events,results,refresh,setMessage}) {
@@ -421,7 +451,7 @@ export default function App() {
     <Route path="/olimpiadas" element={<Olympiads olympiads={data.olympiads}/>}/>
     <Route path="/olimpiadas/:acronym" element={<Detail olympiads={data.olympiads} events={data.events}/>}/>
     <Route path="/calendario" element={<CalendarPage olympiads={data.olympiads} events={data.events}/>}/>
-    <Route path="/resultados" element={<ResultsPage results={data.results} olympiads={data.olympiads} resultsError={data.resultsError} loading={data.loading}/>}/>
+    <Route path="/resultados" element={<ResultsPage olympiads={data.olympiads}/>}/>
     <Route path="/admin" element={<Admin data={data}/>}/>
     <Route path="*" element={<main className="container page-content"><h2>Página não encontrada</h2><Link to="/">Voltar ao início</Link></main>}/>
   </Routes><footer><div className="container footer-inner"><span>© {new Date().getFullYear()} Pires Ferreira Olímpico</span><Link to="/admin">Administração</Link></div></footer></>;
